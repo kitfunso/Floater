@@ -139,9 +139,13 @@ export function EscalationPanel({ schedule, invoices, vendors, onDecisionRecorde
 
   async function triggerSpecterAlert() {
     if (!schedule) return;
-    const target = schedule.escalations.find((e) => e.invoiceId === 'INV-FLOOR-BREACH');
-    if (!target) return;
-    await investigate(target.invoiceId, 0.7);
+    // Fan out across every flagged invoice. Each card re-investigates with
+    // elevated distress 0.7 in parallel — three vendor-health agents flip
+    // to "defer" within the same second. Demo beat: one button, three red
+    // borders, judges see Specter as a structural input across the panel.
+    await Promise.all(
+      schedule.escalations.map((e) => investigate(e.invoiceId, 0.7)),
+    );
   }
 
   async function decide(invoiceId: string, verdict: 'approve' | 'defer' | 'reject') {
