@@ -103,10 +103,31 @@ The optimiser test asserts the **exact** escalation set: `[INV-FLOOR-BREACH, INV
 
 ## Deploy
 
+**Live demo:** https://floater.skfsk27.workers.dev
+
+Cloudflare Workers via OpenNext:
+
 ```bash
-vercel link
-vercel --prod
-# In the Vercel dashboard, set DEMO_REPLAY=1 + the API keys.
+npm run deploy:cf      # build + wrangler deploy in one shot
+npm run preview:cf     # build + wrangler dev (local Worker preview)
+```
+
+The build script (`scripts/build-cf.mjs`) hides `node_modules/@cursor/sdk`
+during the OpenNext + wrangler bundle pass so esbuild doesn't trip on the
+SDK's dynamic `require` patterns or `.d.ts` files. The SDK is only used in
+the live (non-DEMO_REPLAY) path, which Cloudflare Workers can't run anyway,
+so the lazy `loadCursorSdk()` returns null and the demo fixture path takes
+over. The SDK is restored on local dev / Vercel deploys.
+
+API routes are stateless on Cloudflare (Worker instances don't share
+in-memory state). The client holds the `Schedule` from `/api/optimise` and
+passes the per-entry `distressScore` to subsequent `/api/investigate` calls
+plus `autoPayCount + decisions[]` to `/api/execute`.
+
+Vercel deploy still works the same way:
+
+```bash
+vercel link && vercel --prod
 ```
 
 ## Build plan recap

@@ -6,7 +6,7 @@ import { NextResponse } from 'next/server';
 import { loadAll } from '@/lib/data';
 import { getDistressScore } from '@/lib/specter';
 import { optimise, simulate } from '@/lib/optimiser';
-import { newScheduleId, writePending } from '@/lib/runs';
+import { newScheduleId } from '@/lib/runs';
 import type { DistressMap, Invoice } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -42,8 +42,10 @@ export async function POST() {
 
     full.scheduleId = newScheduleId();
     full.breachesAvoidedVsBaseline = breachesAvoidedVsBaseline;
-    writePending(full);
 
+    // No server-side persistence on Cloudflare. Client holds the schedule
+    // and includes whatever subsequent calls need (distressScore for
+    // /api/investigate, autoPayCount + decisions for /api/execute).
     return NextResponse.json(full);
   } catch (err) {
     console.error('optimise error', err);

@@ -11,6 +11,7 @@ type Props = {
   invoices: Invoice[];
   vendors: Vendor[];
   onScheduleChange: (s: Schedule) => void;
+  onDecisionRecorded?: (d: { invoiceId: string; verdict: 'approve' | 'defer' | 'reject' }) => void;
 };
 
 type InvestigateResult = {
@@ -34,7 +35,7 @@ function gbp(n: number): string {
   return `£${n.toLocaleString('en-GB', { maximumFractionDigits: 0 })}`;
 }
 
-export function EscalationPanel({ schedule, invoices, vendors, onScheduleChange }: Props) {
+export function EscalationPanel({ schedule, invoices, vendors, onDecisionRecorded }: Props) {
   const [cardStates, setCardStates] = useState<Record<string, CardState>>({});
 
   if (!schedule) return null;
@@ -61,9 +62,15 @@ export function EscalationPanel({ schedule, invoices, vendors, onScheduleChange 
 
   async function investigate(invoiceId: string, forceDistress?: number) {
     if (!schedule) return;
+    const entry = schedule.entries.find((e) => e.invoiceId === invoiceId);
+    if (!entry) return;
     setState(invoiceId, { loading: true, error: null, alertActive: forceDistress !== undefined });
     try {
-      const body: Record<string, unknown> = { scheduleId: schedule.scheduleId, invoiceId };
+      const body: Record<string, unknown> = {
+        scheduleId: schedule.scheduleId,
+        invoiceId,
+        distressScore: entry.distressScore,
+      };
       if (forceDistress !== undefined) body.forceDistress = forceDistress;
       const res = await fetch('/api/investigate', {
         method: 'POST',
@@ -99,6 +106,7 @@ export function EscalationPanel({ schedule, invoices, vendors, onScheduleChange 
       });
       if (!res.ok) throw new Error(`decide ${res.status}`);
       setState(invoiceId, { decisionMade: verdict });
+      onDecisionRecorded?.({ invoiceId, verdict });
     } catch (e) {
       setState(invoiceId, { error: (e as Error).message });
     }

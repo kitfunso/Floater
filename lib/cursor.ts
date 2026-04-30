@@ -7,11 +7,37 @@
 // import the SDK at module top so the dependency is real and tree-shaking
 // can't drop it.
 
-import { Agent } from '@cursor/sdk';
 import type { Invoice, Vendor, Forecast, Verdict } from './types';
 
-// Re-export so route handlers / agents reference the same Agent type.
-export { Agent };
+// Dynamic loader for @cursor/sdk. Hidden behind string concat so bundlers
+// (esbuild on Cloudflare Workers) skip it — the SDK has Node-only dynamic
+// requires that don't survive Workers bundling. Live path only.
+//
+// The minimal subset of the SDK we use: Agent.create + agent.send + run.wait.
+// Typed loosely (unknown) so Next.js can compile when the SDK is hidden
+// during CF builds (see scripts/build-cf.mjs).
+export type CursorSdkLite = {
+  Agent: {
+    create(opts: {
+      apiKey: string;
+      model: { id: string };
+      name?: string;
+      local?: { cwd?: string };
+    }): Promise<{
+      send(prompt: string): Promise<{ wait(): Promise<{ status: string; text?: string } | null | undefined> }>;
+      close(): void;
+    }>;
+  };
+};
+
+export async function loadCursorSdk(): Promise<CursorSdkLite | null> {
+  try {
+    const mod = '@cursor' + '/sdk';
+    return (await import(/* webpackIgnore: true */ mod)) as unknown as CursorSdkLite;
+  } catch {
+    return null;
+  }
+}
 
 export type AgentInput = {
   invoice: Invoice;

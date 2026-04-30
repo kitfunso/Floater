@@ -1,37 +1,35 @@
-// File-system persistence for schedule runs. Local dev writes to ./runs;
-// Vercel writes to /tmp (only writable directory in their serverless env).
-// All run files are JSON; decisions are JSONL append-only.
+// In-memory persistence for schedule runs. A single demo session lives in
+// one Worker / Node instance and the state never needs to outlive it. This
+// avoids fs writes (Cloudflare Workers don't have a writable filesystem)
+// without breaking the Optimise -> Investigate -> Decide -> Execute flow.
 
-import { mkdirSync, readFileSync, writeFileSync, existsSync, appendFileSync } from 'node:fs';
-import { join } from 'node:path';
 import type { Schedule } from './types';
 
-const RUNS_DIR = (() => {
-  if (process.env.RUNS_DIR) return process.env.RUNS_DIR;
-  if (process.env.VERCEL === '1') return '/tmp/floater-runs';
-  return join(process.cwd(), 'runs');
-})();
+type GlobalStore = {
+  pending: Map<string, Schedule>;
+  decisions: Map<string, DecisionRecord[]>;
+  executed: Map<string, ExecutedRun>;
+};
 
-function ensureDir(): void {
-  mkdirSync(RUNS_DIR, { recursive: true });
-}
-
-function pendingPath(id: string): string  { return join(RUNS_DIR, `${id}.pending.json`); }
-function decisionsPath(id: string): string { return join(RUNS_DIR, `${id}.decisions.jsonl`); }
-function executedPath(id: string): string  { return join(RUNS_DIR, `${id}.executed.json`); }
+// Hang the store off globalThis so module reloads (next dev) don't lose
+// state mid-session.
+const g = globalThis as unknown as { __floaterRuns?: GlobalStore };
+const store: GlobalStore = (g.__floaterRuns ??= {
+  pending: new Map(),
+  decisions: new Map(),
+  executed: new Map(),
+});
 
 export function newScheduleId(): string {
   return `SCH-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`.toUpperCase();
 }
 
 export function writePending(schedule: Schedule): void {
-  ensureDir();
-  writeFileSync(pendingPath(schedule.scheduleId), JSON.stringify(schedule, null, 2) + '\n');
+  store.pending.set(schedule.scheduleId, schedule);
 }
 
 export function readPending(scheduleId: string): Schedule | null {
-  if (!existsSync(pendingPath(scheduleId))) return null;
-  return JSON.parse(readFileSync(pendingPath(scheduleId), 'utf8')) as Schedule;
+  return store.pending.get(scheduleId) ?? null;
 }
 
 export type DecisionRecord = {
@@ -43,16 +41,13 @@ export type DecisionRecord = {
 };
 
 export function appendDecision(record: DecisionRecord): void {
-  ensureDir();
-  appendFileSync(decisionsPath(record.scheduleId), JSON.stringify(record) + '\n');
+  const list = store.decisions.get(record.scheduleId) ?? [];
+  list.push(record);
+  store.decisions.set(record.scheduleId, list);
 }
 
 export function readDecisions(scheduleId: string): DecisionRecord[] {
-  if (!existsSync(decisionsPath(scheduleId))) return [];
-  return readFileSync(decisionsPath(scheduleId), 'utf8')
-    .split('\n')
-    .filter((line) => line.trim().length > 0)
-    .map((line) => JSON.parse(line) as DecisionRecord);
+  return store.decisions.get(scheduleId) ?? [];
 }
 
 export type ExecutedRun = {
@@ -60,18 +55,16 @@ export type ExecutedRun = {
   executedAt: string;
   schedule: Schedule;
   decisions: DecisionRecord[];
-  executed: number;     // count of auto-pay entries committed
-  approved: number;     // count of escalations approved
+  executed: number;
+  approved: number;
   deferred: number;
   rejected: number;
 };
 
 export function writeExecuted(record: ExecutedRun): void {
-  ensureDir();
-  writeFileSync(executedPath(record.scheduleId), JSON.stringify(record, null, 2) + '\n');
+  store.executed.set(record.scheduleId, record);
 }
 
 export function readExecuted(scheduleId: string): ExecutedRun | null {
-  if (!existsSync(executedPath(scheduleId))) return null;
-  return JSON.parse(readFileSync(executedPath(scheduleId), 'utf8')) as ExecutedRun;
+  return store.executed.get(scheduleId) ?? null;
 }

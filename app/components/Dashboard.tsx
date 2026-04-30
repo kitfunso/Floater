@@ -27,6 +27,7 @@ export function Dashboard({ invoices, vendors, forecast, autoPayRules, escalateR
   const [executing, setExecuting] = useState(false);
   const [executeResult, setExecuteResult] = useState<{ executed: number; approved: number; deferred: number; rejected: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [decisions, setDecisions] = useState<{ invoiceId: string; verdict: 'approve' | 'defer' | 'reject' }[]>([]);
 
   async function runOptimise() {
     setOptimising(true);
@@ -48,10 +49,15 @@ export function Dashboard({ invoices, vendors, forecast, autoPayRules, escalateR
     if (!schedule) return;
     setExecuting(true);
     try {
+      const autoPayCount = schedule.entries.filter((e) => e.reason !== 'flagged').length;
       const res = await fetch('/api/execute', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ scheduleId: schedule.scheduleId }),
+        body: JSON.stringify({
+          scheduleId: schedule.scheduleId,
+          autoPayCount,
+          decisions,
+        }),
       });
       const data = await res.json();
       setExecuteResult(data);
@@ -107,6 +113,7 @@ export function Dashboard({ invoices, vendors, forecast, autoPayRules, escalateR
             invoices={invoices}
             vendors={vendors}
             onScheduleChange={setSchedule}
+            onDecisionRecorded={(d) => setDecisions((arr) => [...arr, d])}
           />
         </div>
         <PolicyPanel autoPayRules={autoPayRules} escalateRules={escalateRules} />

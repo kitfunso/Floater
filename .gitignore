@@ -49,5 +49,9 @@ spike/
 # run logs
 runs/
 
+# OpenNext Cloudflare build output
+.open-next/
+.wrangler/
+
 # os
 Thumbs.db

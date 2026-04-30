@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:cf": "node scripts/build-cf.mjs build",
+    "preview:cf": "node scripts/build-cf.mjs preview",
+    "deploy:cf": "node scripts/build-cf.mjs deploy"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
@@ -25,12 +28,14 @@
     "zod": "^4.4.1"
   },
   "devDependencies": {
+    "@opennextjs/cloudflare": "^1.19.5",
     "@tailwindcss/postcss": "^4.2.4",
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "tailwindcss": "^4.2.4",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "wrangler": "^4.87.0"
   }
 }

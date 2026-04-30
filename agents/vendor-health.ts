@@ -7,7 +7,7 @@
 // Under DEMO_REPLAY=0: would prompt gpt-5-mini for a one-line rationale via
 // the Cursor SDK. Wired but not the demo path.
 
-import { Agent } from '@cursor/sdk';
+import { loadCursorSdk } from '../lib/cursor';
 import type { SubAgent, AgentInput, AgentRunResult } from '../lib/cursor';
 import type { Verdict } from '../lib/types';
 import {
@@ -53,7 +53,9 @@ async function runLive(input: AgentInput): Promise<Verdict> {
   try {
     const apiKey = process.env.CURSOR_API_KEY;
     if (!apiKey) return runDemoReplay(input);
-    const agent = await Agent.create({
+    const sdk = await loadCursorSdk();
+    if (!sdk) return runDemoReplay(input);
+    const agent = await sdk.Agent.create({
       apiKey,
       model: { id: 'gpt-5-mini' },
       name: `vendor-health-${input.invoice.id}`,
@@ -63,7 +65,7 @@ async function runLive(input: AgentInput): Promise<Verdict> {
       const prompt = `Vendor ${input.vendor.name} has Specter distress score ${input.distressScore.toFixed(2)}. Invoice ${input.invoice.id} for £${input.invoice.amount} is due ${input.invoice.dueDate}. Recommend pay-early, pay-on-time, stretch, or defer in 1 line. Then 1 sentence rationale.`;
       const run = await agent.send(prompt);
       const result = await run.wait();
-      const text = (result?.status === 'finished' && 'text' in result ? (result as { text?: string }).text : '') ?? '';
+      const text = (result && result.status === 'finished' ? result.text ?? '' : '') ?? '';
       const fallback = rationaleFor(input.distressScore);
       // Cheap parse: if model output mentions "defer" use defer; else fallback.
       const lower = text.toLowerCase();
