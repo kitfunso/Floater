@@ -124,11 +124,25 @@ in-memory state). The client holds the `Schedule` from `/api/optimise` and
 passes the per-entry `distressScore` to subsequent `/api/investigate` calls
 plus `autoPayCount + decisions[]` to `/api/execute`.
 
-Vercel deploy still works the same way:
+Vercel (Node.js host - the @cursor/sdk loads natively here so the live path
+actually executes Cursor cloud agents):
 
 ```bash
-vercel link && vercel --prod
+# 1. One-time interactive auth
+vercel login
+
+# 2. Link + push env + deploy production in one shot
+npm run deploy:vercel
 ```
+
+The script reads CURSOR_API_KEY + SPECTER_API_KEY from .env.local and pushes
+them to Vercel production env. DEMO_REPLAY is set to 1 so investigate calls
+return in <100ms instead of 18s; flip to 0 in the Vercel dashboard for live
+SDK proof.
+
+Verified locally with `DEMO_REPLAY=0 CURSOR_API_KEY=... npx tsx spike/sdk-live-test.ts`:
+the SDK loads, Agent.create + send + wait succeed, 3 verdicts come back from
+real Cursor agents.
 
 ## Build plan recap
 

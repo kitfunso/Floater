@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "build:cf": "node scripts/build-cf.mjs build",
     "preview:cf": "node scripts/build-cf.mjs preview",
-    "deploy:cf": "node scripts/build-cf.mjs deploy"
+    "deploy:cf": "node scripts/build-cf.mjs deploy",
+    "deploy:vercel": "bash scripts/vercel-deploy.sh"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
