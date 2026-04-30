@@ -1,0 +1,72 @@
+{
+  "openingCash": 80000,
+  "cashFloor": 40000,
+  "flows": [
+    {
+      "date": "2026-05-04",
+      "inflow": 0,
+      "outflow": 8000,
+      "label": "Office rent"
+    },
+    {
+      "date": "2026-05-08",
+      "inflow": 20000,
+      "outflow": 0,
+      "label": "AR receipt"
+    },
+    {
+      "date": "2026-05-15",
+      "inflow": 20000,
+      "outflow": 0,
+      "label": "AR receipt"
+    },
+    {
+      "date": "2026-05-22",
+      "inflow": 20000,
+      "outflow": 0,
+      "label": "AR receipt"
+    },
+    {
+      "date": "2026-05-29",
+      "inflow": 20000,
+      "outflow": 0,
+      "label": "AR receipt"
+    },
+    {
+      "date": "2026-06-05",
+      "inflow": 20000,
+      "outflow": 0,
+      "label": "AR receipt"
+    },
+    {
+      "date": "2026-06-12",
+      "inflow": 20000,
+      "outflow": 0,
+      "label": "AR receipt"
+    },
+    {
+      "date": "2026-06-19",
+      "inflow": 20000,
+      "outflow": 0,
+      "label": "AR receipt"
+    },
+    {
+      "date": "2026-06-26",
+      "inflow": 20000,
+      "outflow": 0,
+      "label": "AR receipt"
+    },
+    {
+      "date": "2026-06-01",
+      "inflow": 0,
+      "outflow": 30000,
+      "label": "Payroll"
+    },
+    {
+      "date": "2026-06-29",
+      "inflow": 0,
+      "outflow": 30000,
+      "label": "Payroll"
+    }
+  ]
+}

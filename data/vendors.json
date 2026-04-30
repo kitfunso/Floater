@@ -1,0 +1,85 @@
+[
+  {
+    "id": "V-001",
+    "name": "Acme Office Supplies",
+    "specterId": "specter-clean-1",
+    "paymentHistory": "reliable",
+    "strategicTier": 3
+  },
+  {
+    "id": "V-002",
+    "name": "Brightleaf Logistics",
+    "specterId": "specter-clean-2",
+    "paymentHistory": "reliable",
+    "strategicTier": 2
+  },
+  {
+    "id": "V-003",
+    "name": "Coral Cloud Hosting",
+    "specterId": "specter-clean-3",
+    "paymentHistory": "reliable",
+    "strategicTier": 1
+  },
+  {
+    "id": "V-004",
+    "name": "Dunbar Print Services",
+    "specterId": "specter-clean-4",
+    "paymentHistory": "reliable",
+    "strategicTier": 3
+  },
+  {
+    "id": "V-005",
+    "name": "Evergreen Catering",
+    "specterId": "specter-clean-5",
+    "paymentHistory": "reliable",
+    "strategicTier": 3
+  },
+  {
+    "id": "V-006",
+    "name": "Fjord Software Ltd",
+    "specterId": "specter-clean-6",
+    "paymentHistory": "reliable",
+    "strategicTier": 1
+  },
+  {
+    "id": "V-007",
+    "name": "Greenline Couriers",
+    "specterId": "specter-clean-7",
+    "paymentHistory": "reliable",
+    "strategicTier": 2
+  },
+  {
+    "id": "V-008",
+    "name": "Halcyon Energy Co",
+    "specterId": "specter-clean-8",
+    "paymentHistory": "reliable",
+    "strategicTier": 1
+  },
+  {
+    "id": "V-009",
+    "name": "Iridium Components",
+    "specterId": "specter-distressed-1",
+    "paymentHistory": "reliable",
+    "strategicTier": 2
+  },
+  {
+    "id": "V-010",
+    "name": "Jade Studios (NEW)",
+    "paymentHistory": "new",
+    "strategicTier": 3
+  },
+  {
+    "id": "V-011",
+    "name": "Kindred Legal LLP",
+    "specterId": "specter-clean-9",
+    "paymentHistory": "reliable",
+    "strategicTier": 2
+  },
+  {
+    "id": "V-012",
+    "name": "Larkspur Marketing",
+    "specterId": "specter-clean-10",
+    "paymentHistory": "reliable",
+    "strategicTier": 3
+  }
+]
