@@ -16,7 +16,7 @@ type Props = {
 
 type InvestigateResult = {
   verdicts: Verdict[];
-  parallelism: { spreadMs: number; durationMs: number };
+  parallelism: { spreadMs: number; durationMs: number; sequentialMs: number; speedup: number; agentCount: number };
   narration?: string;
   effectiveDistress?: number;
 };
@@ -210,7 +210,7 @@ function InvoiceCard({ escalation, invoice, vendor, distressScore, originalDistr
               </div>
             )}
             <div className="text-[11px] text-muted-foreground font-mono tabular-nums">
-              3 agents · spread {state.result.parallelism.spreadMs}ms · wallclock {state.result.parallelism.durationMs}ms
+              {state.result.parallelism.agentCount} agents in {state.result.parallelism.durationMs}ms · ~{state.result.parallelism.sequentialMs}ms sequential · {state.result.parallelism.speedup}× speedup
             </div>
             <div className="space-y-2">
               {state.result.verdicts.map((v) => (

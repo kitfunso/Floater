@@ -183,12 +183,14 @@ No indexes, no relationships beyond `Invoice.vendorId → Vendor.id` (linear sca
 
 All routes are unauthenticated (single demo session). All accept / return JSON. No middleware.
 
+**Stateless on Cloudflare:** Worker instances don't share memory across requests, so persistence happens client-side. `/api/optimise` mints a `scheduleId` and returns the full `Schedule` with each entry's `distressScore`; the client carries that data on subsequent calls.
+
 | Method | Path                  | Body                                    | Returns                  | Purpose                                |
 |--------|-----------------------|-----------------------------------------|--------------------------|----------------------------------------|
-| POST   | `/api/optimise`       | `{}`                                    | `Schedule`               | Pre-fetch Specter scores for all vendors, run baseline + full optimiser, mint `scheduleId`, write `runs/<scheduleId>.pending.json`, return Schedule + escalations. |
-| POST   | `/api/investigate`    | `{ invoiceId: string; scheduleId: string }` | `{ verdicts: Verdict[] }` | Read `runs/<scheduleId>.pending.json` for the pre-fetched distress score. Spawn 3 Cursor sub-agents in parallel via `lib/cursor.ts::fanOut`; return verdicts. Cache by `(scheduleId, invoiceId)`. |
-| POST   | `/api/execute`        | `{ scheduleId: string }`                | `{ executed: number }`   | Read pending schedule, append decisions, write `runs/<scheduleId>.executed.json`. Idempotent: re-execute returns the existing executed log. |
-| POST   | `/api/decide`         | `{ scheduleId: string; invoiceId: string; verdict: 'approve' | 'defer' | 'reject'; reason: string }` | `{ ok: true }` | Append decision to `runs/<scheduleId>.decisions.jsonl`. |
+| POST   | `/api/optimise`       | `{}`                                    | `Schedule`               | Pre-fetch Specter scores for all vendors, run baseline + full optimiser, mint `scheduleId`, return Schedule + escalations (no server-side persistence). |
+| POST   | `/api/investigate`    | `{ scheduleId: string; invoiceId: string; distressScore: number; forceDistress?: number }` | `{ verdicts, parallelism, narration, effectiveDistress }` | Spawn 3 Cursor sub-agents in parallel via `lib/cursor.ts::fanOut`; return verdicts + narration. Cache by `(scheduleId, invoiceId)`. `forceDistress` overrides for the Specter alert demo. |
+| POST   | `/api/decide`         | `{ scheduleId: string; invoiceId: string; verdict: 'approve' \| 'defer' \| 'reject'; reason: string }` | `{ ok: true }` | Validates the decision; client tracks it locally. |
+| POST   | `/api/execute`        | `{ scheduleId: string; autoPayCount: number; decisions: { invoiceId, verdict }[] }` | `{ executed, approved, deferred, rejected }` | Returns the execution summary. |
 
 Auth model: none. All rails read mock JSON; nothing leaves the box except Specter and OpenAI calls.
 
@@ -208,14 +210,14 @@ Rule: if a function touches both a request object and the optimiser, it lives in
 
 1. Server `app/page.tsx` reads `data/*.json` and passes initial state into client `<Dashboard>`.
 2. User clicks **Optimise** → `POST /api/optimise`. Route handler:
-   a. Reads `data/*.json`.
+   a. Reads `data/*.json` (static imports, bundled at build time).
    b. Pre-fetches Specter `distressScore` for every vendor in parallel (`Promise.all`), using DEMO_REPLAY fixtures when set.
    c. Runs the optimiser twice: once with `forceNaive=true` for baseline, once full. Diffs breach counts.
-   d. Mints `scheduleId` (ULID), writes `runs/<scheduleId>.pending.json`, returns `Schedule`.
+   d. Mints `scheduleId`, returns `Schedule`. No server-side persistence.
 3. Calendar animates new dates; SavingsCounter increments. Every `InvoiceCard` shows a Specter score badge.
-4. For each flagged invoice the EscalationPanel calls `POST /api/investigate { scheduleId, invoiceId }` → fan-out via `lib/cursor.ts` to three sub-agents in parallel, returns 3 verdicts. Cache hit on second click.
+4. For each flagged invoice the EscalationPanel calls `POST /api/investigate { scheduleId, invoiceId, distressScore }` → fan-out via `lib/cursor.ts` to three sub-agents in parallel, returns 3 verdicts + parallelism stats + cached narration. Cache hit on second click.
 5. Cards render: unanimous proceed turns green, dissent stays amber, distressScore > 0.5 turns red.
-6. User clicks **Approve / Defer / Reject** → `POST /api/decide { scheduleId, invoiceId, verdict, reason }` → appends to `runs/<scheduleId>.decisions.jsonl`.
-7. User clicks **Execute** → `POST /api/execute { scheduleId }` → reads pending + decisions, writes `runs/<scheduleId>.executed.json`. UI shows total saved + breaches avoided.
+6. User clicks **Approve / Defer / Reject** → `POST /api/decide` → returns ok; client tracks the decision in `decisions[]`.
+7. User clicks **Execute** → `POST /api/execute { scheduleId, autoPayCount, decisions }` → returns the execution summary. UI shows total saved + breaches avoided.
 
 Latency targets: `/api/optimise` < 500 ms (Specter pre-fetch is the long pole; pure TS optimiser < 50 ms over 50 invoices). `/api/investigate` < 3 s on first call (three parallel sub-agent calls); < 50 ms on cache hit.

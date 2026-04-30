@@ -80,6 +80,11 @@ async function main() {
   // Each agent has 25-80ms stagger; if sequential, total >= 90ms. Promise.all
   // should land it under 120ms total.
   check(`total wallclock < 200ms (got ${t3total}ms)`, t3total < 200);
+  check(`speedup > 1 (got ${r3.parallelism.speedup}×)`, r3.parallelism.speedup > 1);
+  check(`sequentialMs >= durationMs`,
+    r3.parallelism.sequentialMs >= r3.parallelism.durationMs,
+    `seq=${r3.parallelism.sequentialMs}, dur=${r3.parallelism.durationMs}`);
+  check('agentCount=3', r3.parallelism.agentCount === 3);
   check('cache hit on second call', (await (async () => {
     const c0 = Date.now();
     await fanOut({ invoice: inv, vendor, forecast: { openingCash: 200_000, cashFloor: 40_000, flows: [] }, distressScore: 0.1, scheduleId: 'SCH-3' }, ALL_AGENTS);

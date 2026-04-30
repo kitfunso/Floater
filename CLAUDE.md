@@ -14,7 +14,7 @@ See `docs/ARCHITECTURE.md`. Stack: Next.js 15 App Router + Tailwind + shadcn/ui,
 4. **Sub-agents must fan out in parallel via `@cursor/sdk`.** Not sequential, not "an agent that calls tools". Three concurrent agent runs per flagged invoice. Why: this is the structural Cursor SDK usage that earns the 3-pt bonus. Sequential calls do not.
 5. **Specter is a decision input, not decoration.** `vendor.distressScore` from Specter directly gates the pay-early branch in `lib/optimiser.ts`. Why: rubric says "structural", not "name-checked".
 6. **Deterministic demo.** Seed mocks so the same 3 escalation cases fire every run (large+new vendor, Specter alert, cash breach). `DEMO_REPLAY=1` swaps Specter + OpenAI for fixtures; LLM narration is fixture-cached by `invoiceId` and **never live in the demo critical path**. Why: live LLM variance kills demos.
-7. **No DB, no migrations, no auth.** JSON files in `data/`, run logs in `runs/`. Why: 4.5h. Schema work is the easiest way to lose the build.
+7. **No DB, no migrations, no auth, no server-side state.** JSON files in `data/`. Schedule + decisions live client-side and travel in request bodies (Cloudflare Workers don't share in-memory state across instances). Why: 4.5h, and KV / Durable Objects is overkill for a single demo session.
 8. **Never use `--no-verify` on commits.** Why: project-wide rule across Keith's repos; hooks are there to catch leaked keys.
 
 ## Coding Conventions
@@ -48,7 +48,7 @@ Read before editing in their area:
 
 - **Calling sub-agents sequentially** because `await` is easier than `Promise.all`. This kills the bonus. Use `Promise.all` over an array of agent runs.
 - **Reading `data/*.json` inside `lib/`** for "convenience". Breaks testability and replay. Read in the API route, pass data in.
-- **Letting `/api/optimise` mutate `data/invoices.json`.** It must be read-only. Run logs go to `runs/`.
+- **Letting `/api/optimise` mutate `data/invoices.json`.** It must be read-only — `data/*.json` are static JSON imports bundled at build time; reassigning them at runtime is a no-op anyway.
 - **Showing escalations the policy didn't actually flag.** The PolicyPanel must `import { AUTO_PAY_RULES, ESCALATE_RULES } from 'lib/policy'`. Never re-write the rules as JSX strings.
 - **Spending >30 min on calendar visuals.** Fall back to a coloured table sorted by date if Gantt eats time. The savings counter and escalation panel are the demo, not the calendar.
 - **Running live LLM on the demo critical path.** Pre-bake narration fixtures keyed by `invoiceId` under `DEMO_REPLAY=1`. A flaky network during the pitch is the only fail you can't unwind.
