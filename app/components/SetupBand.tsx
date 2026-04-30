@@ -122,19 +122,16 @@ function CashChart({ trajectory, floor }: { trajectory: Point[]; floor: number }
   const floorY = y(floor);
 
   // Key moments: payroll dips (local minima)
+  // Only annotate payroll dips well past the opening (skip day <= 7 to avoid
+  // cluttering the opening dot area). Skip the peak too — y-axis labels cover it.
   const annotations: { day: number; cash: number; label: string }[] = [];
   for (let i = 1; i < trajectory.length - 1; i++) {
     const prev = trajectory[i - 1]!.cash;
     const curr = trajectory[i]!.cash;
     const next = trajectory[i + 1]!.cash;
-    if (curr < prev && curr <= next && curr < rawMax * 0.7) {
+    if (curr < prev && curr <= next && trajectory[i]!.day > 7) {
       annotations.push({ day: trajectory[i]!.day, cash: curr, label: `£${(curr / 1000).toFixed(0)}k` });
     }
-  }
-  // Peak
-  const peakIdx = allCash.indexOf(rawMax);
-  if (peakIdx >= 0) {
-    annotations.push({ day: trajectory[peakIdx]!.day, cash: rawMax, label: `£${(rawMax / 1000).toFixed(0)}k` });
   }
 
   return (
