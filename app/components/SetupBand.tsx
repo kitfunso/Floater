@@ -72,9 +72,16 @@ function buildTrajectory(forecast: Forecast): Point[] {
   const maxDay = Math.max(...byDay.keys());
   const pts: Point[] = [];
   let cash = forecast.openingCash;
+  // Start at openingCash BEFORE any day-0 flows so the chart matches
+  // the setup band's "Opening cash £80k". Day-0 rent drop is visible
+  // as the first step down on the line.
+  pts.push({ day: 0, cash });
   for (let d = 0; d <= maxDay; d++) {
-    cash += byDay.get(d) ?? 0;
-    pts.push({ day: d, cash });
+    const delta = byDay.get(d) ?? 0;
+    if (delta !== 0) {
+      cash += delta;
+      pts.push({ day: d, cash });
+    }
   }
   return pts;
 }
