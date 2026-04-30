@@ -81,7 +81,7 @@ function buildTrajectory(forecast: Forecast): Point[] {
 
 function CashChart({ trajectory, floor }: { trajectory: Point[]; floor: number }) {
   if (trajectory.length < 2) return null;
-  const W = 600, H = 80, PX = 32, PY = 8;
+  const W = 600, H = 140, PX = 36, PY = 16;
   const maxDay = trajectory[trajectory.length - 1]!.day;
   const allCash = trajectory.map((p) => p.cash);
   const minC = Math.min(...allCash, floor) * 0.9;
@@ -95,7 +95,7 @@ function CashChart({ trajectory, floor }: { trajectory: Point[]; floor: number }
   const floorY = y(floor);
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-20 select-none" preserveAspectRatio="none">
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-36 select-none" preserveAspectRatio="none">
       <defs>
         <linearGradient id="cashGrad" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="oklch(0.72 0.15 220)" stopOpacity="0.25" />
@@ -105,9 +105,9 @@ function CashChart({ trajectory, floor }: { trajectory: Point[]; floor: number }
       <path d={area} fill="url(#cashGrad)" />
       <path d={line} fill="none" stroke="oklch(0.72 0.15 220)" strokeWidth="2" strokeLinejoin="round" />
       <line x1={PX} y1={floorY} x2={W - PX} y2={floorY} stroke="oklch(0.63 0.2 25)" strokeWidth="1" strokeDasharray="4 3" />
-      <text x={W - PX + 4} y={floorY + 3} fill="oklch(0.63 0.2 25)" fontSize="8" fontFamily="monospace">floor</text>
-      <text x={PX - 2} y={y(trajectory[0]!.cash) + 3} fill="oklch(0.72 0.15 220)" fontSize="8" fontFamily="monospace" textAnchor="end">
-        {(trajectory[0]!.cash / 1000).toFixed(0)}k
+      <text x={W - PX + 4} y={floorY + 4} fill="oklch(0.63 0.2 25)" fontSize="10" fontFamily="monospace">floor £{(floor / 1000).toFixed(0)}k</text>
+      <text x={PX - 4} y={y(trajectory[0]!.cash) - 6} fill="oklch(0.72 0.15 220)" fontSize="10" fontFamily="monospace" textAnchor="end">
+        £{(trajectory[0]!.cash / 1000).toFixed(0)}k
       </text>
     </svg>
   );
