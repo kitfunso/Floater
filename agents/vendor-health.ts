@@ -35,9 +35,10 @@ function rationaleFor(distressScore: number): { recommendation: Verdict['recomme
 }
 
 async function runDemoReplay(input: AgentInput): Promise<Verdict> {
-  // Tiny stagger so the parallelism timestamp strip in the UI shows non-zero
-  // spread even on this fast path.
-  await new Promise((r) => setTimeout(r, 30 + Math.floor(input.distressScore * 50)));
+  // Realistic LLM-like latency so the "running…" rows in the UI are visible
+  // for a beat each. vendor-health is the slowest because in the live path
+  // it'd hit gpt-5-mini for its rationale.
+  await new Promise((r) => setTimeout(r, 380 + Math.floor(input.distressScore * 200)));
   const { recommendation, rationale } = rationaleFor(input.distressScore);
   return {
     agent: 'vendor-health',

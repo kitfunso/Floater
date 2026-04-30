@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Schedule, Invoice, Vendor, Verdict, Escalation } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,22 +14,40 @@ type Props = {
   onDecisionRecorded?: (d: { invoiceId: string; verdict: 'approve' | 'defer' | 'reject' }) => void;
 };
 
-type InvestigateResult = {
-  verdicts: Verdict[];
-  parallelism: { spreadMs: number; durationMs: number; sequentialMs: number; speedup: number; agentCount: number };
-  narration?: string;
-  effectiveDistress?: number;
-};
+const AGENT_NAMES = ['vendor-health', 'cash-impact', 'discount-npv'] as const;
+type AgentName = typeof AGENT_NAMES[number];
+
+type AgentRowState =
+  | { status: 'idle' }
+  | { status: 'running'; startedAt: number }
+  | { status: 'done'; verdict: Verdict; durationMs: number }
+  | { status: 'error'; error: string };
 
 type CardState = {
-  loading: boolean;
-  result: InvestigateResult | null;
+  agentRows: Record<AgentName, AgentRowState>;
   decisionMade: 'approve' | 'defer' | 'reject' | null;
-  error: string | null;
   alertActive: boolean;
+  narration: string | null;
+  effectiveDistress: number | null;
+  fanOutStartedAt: number | null;
+  fanOutDoneAt: number | null;
 };
 
-const initialCardState: CardState = { loading: false, result: null, decisionMade: null, error: null, alertActive: false };
+function freshState(): CardState {
+  return {
+    agentRows: {
+      'vendor-health': { status: 'idle' },
+      'cash-impact':   { status: 'idle' },
+      'discount-npv':  { status: 'idle' },
+    },
+    decisionMade: null,
+    alertActive: false,
+    narration: null,
+    effectiveDistress: null,
+    fanOutStartedAt: null,
+    fanOutDoneAt: null,
+  };
+}
 
 function gbp(n: number): string {
   return `£${n.toLocaleString('en-GB', { maximumFractionDigits: 0 })}`;
@@ -54,42 +72,73 @@ export function EscalationPanel({ schedule, invoices, vendors, onDecisionRecorde
   const vendById = new Map(vendors.map((v) => [v.id, v]));
 
   function getState(invoiceId: string): CardState {
-    return cardStates[invoiceId] ?? initialCardState;
+    return cardStates[invoiceId] ?? freshState();
   }
-  function setState(invoiceId: string, patch: Partial<CardState>): void {
-    setCardStates((s) => ({ ...s, [invoiceId]: { ...getState(invoiceId), ...patch } }));
+  function setState(invoiceId: string, updater: (prev: CardState) => CardState): void {
+    setCardStates((s) => ({ ...s, [invoiceId]: updater(s[invoiceId] ?? freshState()) }));
   }
 
   async function investigate(invoiceId: string, forceDistress?: number) {
     if (!schedule) return;
     const entry = schedule.entries.find((e) => e.invoiceId === invoiceId);
     if (!entry) return;
-    setState(invoiceId, { loading: true, error: null, alertActive: forceDistress !== undefined });
-    try {
-      const body: Record<string, unknown> = {
-        scheduleId: schedule.scheduleId,
-        invoiceId,
-        distressScore: entry.distressScore,
-      };
-      if (forceDistress !== undefined) body.forceDistress = forceDistress;
-      const res = await fetch('/api/investigate', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error(`investigate ${res.status}`);
-      const result: InvestigateResult = await res.json();
-      setState(invoiceId, { loading: false, result });
-    } catch (e) {
-      setState(invoiceId, { loading: false, error: (e as Error).message });
-    }
+
+    const fanOutStartedAt = Date.now();
+    setState(invoiceId, () => ({
+      ...freshState(),
+      alertActive: forceDistress !== undefined,
+      fanOutStartedAt,
+      agentRows: {
+        'vendor-health': { status: 'running', startedAt: fanOutStartedAt },
+        'cash-impact':   { status: 'running', startedAt: fanOutStartedAt },
+        'discount-npv':  { status: 'running', startedAt: fanOutStartedAt },
+      },
+    }));
+
+    // Fire all three agents in parallel from the browser. Each fetch resolves
+    // independently so React re-renders as each verdict lands.
+    const body: Record<string, unknown> = {
+      scheduleId: schedule.scheduleId,
+      invoiceId,
+      distressScore: entry.distressScore,
+    };
+    if (forceDistress !== undefined) body.forceDistress = forceDistress;
+
+    await Promise.all(
+      AGENT_NAMES.map(async (name) => {
+        const t0 = Date.now();
+        try {
+          const res = await fetch(`/api/agent/${name}`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          if (!res.ok) throw new Error(`${name} ${res.status}`);
+          const data = await res.json() as { verdict: Verdict; durationMs: number; narration?: string; effectiveDistress: number };
+          const dt = Date.now() - t0;
+          setState(invoiceId, (prev) => ({
+            ...prev,
+            agentRows: {
+              ...prev.agentRows,
+              [name]: { status: 'done', verdict: data.verdict, durationMs: dt },
+            },
+            narration: data.narration ?? prev.narration,
+            effectiveDistress: data.effectiveDistress,
+          }));
+        } catch (e) {
+          setState(invoiceId, (prev) => ({
+            ...prev,
+            agentRows: { ...prev.agentRows, [name]: { status: 'error', error: (e as Error).message } },
+          }));
+        }
+      }),
+    );
+
+    setState(invoiceId, (prev) => ({ ...prev, fanOutDoneAt: Date.now() }));
   }
 
   async function triggerSpecterAlert() {
     if (!schedule) return;
-    // Demo trigger: flip INV-FLOOR-BREACH's vendor to high distress and
-    // re-investigate. The card colour flips and the recommendation moves
-    // to "defer" - the live demo moment for the rubric "earned HITL" beat.
     const target = schedule.escalations.find((e) => e.invoiceId === 'INV-FLOOR-BREACH');
     if (!target) return;
     await investigate(target.invoiceId, 0.7);
@@ -105,10 +154,10 @@ export function EscalationPanel({ schedule, invoices, vendors, onDecisionRecorde
         body: JSON.stringify({ scheduleId: schedule.scheduleId, invoiceId, verdict, reason }),
       });
       if (!res.ok) throw new Error(`decide ${res.status}`);
-      setState(invoiceId, { decisionMade: verdict });
+      setState(invoiceId, (prev) => ({ ...prev, decisionMade: verdict }));
       onDecisionRecorded?.({ invoiceId, verdict });
-    } catch (e) {
-      setState(invoiceId, { error: (e as Error).message });
+    } catch {
+      // swallow - demo path
     }
   }
 
@@ -131,14 +180,14 @@ export function EscalationPanel({ schedule, invoices, vendors, onDecisionRecorde
         const entry = schedule.entries.find((e) => e.invoiceId === esc.invoiceId);
         if (!inv || !vendor || !entry) return null;
         const state = getState(esc.invoiceId);
-        const effective = state.result?.effectiveDistress ?? entry.distressScore;
+        const effectiveDistress = state.effectiveDistress ?? entry.distressScore;
         return (
           <InvoiceCard
             key={esc.invoiceId}
             escalation={esc}
             invoice={inv}
             vendor={vendor}
-            distressScore={effective}
+            distressScore={effectiveDistress}
             originalDistress={entry.distressScore}
             payDate={entry.payDate}
             state={state}
@@ -155,7 +204,7 @@ type CardProps = {
   escalation: Escalation;
   invoice: Invoice;
   vendor: Vendor;
-  distressScore: number;       // effective (post-alert) score for UI
+  distressScore: number;
   originalDistress: number;
   payDate: string;
   state: CardState;
@@ -169,15 +218,27 @@ function severityBorder(distressScore: number, dissent: boolean): string {
   return 'border-emerald-500/40 bg-emerald-500/5';
 }
 
+function fanOutStarted(state: CardState): boolean {
+  return state.fanOutStartedAt !== null;
+}
+function allDone(state: CardState): boolean {
+  return AGENT_NAMES.every((n) => {
+    const r = state.agentRows[n];
+    return r.status === 'done' || r.status === 'error';
+  });
+}
+
 function InvoiceCard({ escalation, invoice, vendor, distressScore, originalDistress, payDate, state, onInvestigate, onDecide }: CardProps) {
   const alertActive = state.alertActive && distressScore !== originalDistress;
-  const dissent = state.result
-    ? new Set(state.result.verdicts.map((v) => v.recommendation)).size > 1
-    : false;
+  const verdicts = AGENT_NAMES.map((n) => state.agentRows[n]).filter((r) => r.status === 'done').map((r) => (r as { verdict: Verdict }).verdict);
+  const dissent = verdicts.length === AGENT_NAMES.length && new Set(verdicts.map((v) => v.recommendation)).size > 1;
   const border = severityBorder(distressScore, dissent);
 
+  const started = fanOutStarted(state);
+  const done = allDone(state);
+
   return (
-    <Card className={`border-2 ${border}`}>
+    <Card className={`border-2 ${border} transition-colors duration-300`}>
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -189,59 +250,107 @@ function InvoiceCard({ escalation, invoice, vendor, distressScore, originalDistr
           </div>
           <div className="flex flex-col items-end gap-1 shrink-0">
             <SpecterBadge score={distressScore} />
-            {alertActive && <Badge variant="destructive" className="text-[10px]">SPECTER ALERT</Badge>}
+            {alertActive && <Badge variant="destructive" className="text-[10px] animate-pulse">SPECTER ALERT</Badge>}
             <Badge variant="outline" className="text-[10px]">{vendor.paymentHistory}</Badge>
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        {!state.result && !state.loading && (
+        {!started && (
           <Button onClick={onInvestigate} variant="default" size="sm">
             Investigate (3 agents in parallel)
           </Button>
         )}
-        {state.loading && <p className="text-sm text-muted-foreground">Running sub-agents…</p>}
-        {state.error && <p className="text-sm text-destructive">Error: {state.error}</p>}
-        {state.result && (
-          <>
-            {state.result.narration && (
-              <div className="text-sm rounded-md border bg-muted/40 p-2 italic">
-                {state.result.narration}
-              </div>
-            )}
-            <div className="text-[11px] text-muted-foreground font-mono tabular-nums">
-              {state.result.parallelism.agentCount} agents in {state.result.parallelism.durationMs}ms · ~{state.result.parallelism.sequentialMs}ms sequential · {state.result.parallelism.speedup}× speedup
-            </div>
-            <div className="space-y-2">
-              {state.result.verdicts.map((v) => (
-                <VerdictRow key={v.agent} verdict={v} />
-              ))}
-            </div>
-            {!state.decisionMade ? (
-              <div className="flex gap-2 pt-1">
-                <Button onClick={() => onDecide('approve')} size="sm" variant="default">Approve</Button>
-                <Button onClick={() => onDecide('defer')}   size="sm" variant="secondary">Defer</Button>
-                <Button onClick={() => onDecide('reject')}  size="sm" variant="destructive">Reject</Button>
-              </div>
-            ) : (
-              <div className="text-sm pt-1 text-emerald-700 dark:text-emerald-400">
-                ✓ Decision: <strong>{state.decisionMade}</strong>
-              </div>
-            )}
-          </>
+
+        {started && state.narration && (
+          <div className="text-sm rounded-md border bg-muted/40 p-2 italic">
+            {state.narration}
+          </div>
+        )}
+
+        {started && (
+          <div className="space-y-2">
+            {AGENT_NAMES.map((name) => (
+              <AgentRow key={name} name={name} row={state.agentRows[name]} />
+            ))}
+          </div>
+        )}
+
+        {done && state.fanOutStartedAt !== null && state.fanOutDoneAt !== null && (
+          <div className="text-[11px] text-muted-foreground font-mono tabular-nums pt-1 border-t">
+            {AGENT_NAMES.length} agents in {state.fanOutDoneAt - state.fanOutStartedAt}ms · ~{
+              AGENT_NAMES.reduce((sum, n) => {
+                const r = state.agentRows[n];
+                return sum + (r.status === 'done' ? r.durationMs : 0);
+              }, 0)
+            }ms sequential
+          </div>
+        )}
+
+        {done && !state.decisionMade && verdicts.length === AGENT_NAMES.length && (
+          <div className="flex gap-2 pt-1">
+            <Button onClick={() => onDecide('approve')} size="sm" variant="default">Approve</Button>
+            <Button onClick={() => onDecide('defer')}   size="sm" variant="secondary">Defer</Button>
+            <Button onClick={() => onDecide('reject')}  size="sm" variant="destructive">Reject</Button>
+          </div>
+        )}
+        {state.decisionMade && (
+          <div className="text-sm pt-1 text-emerald-700 dark:text-emerald-400">
+            ✓ Decision: <strong>{state.decisionMade}</strong>
+          </div>
         )}
       </CardContent>
     </Card>
   );
 }
 
-function VerdictRow({ verdict }: { verdict: Verdict }) {
-  const tone = recommendationTone(verdict.recommendation);
+function AgentRow({ name, row }: { name: AgentName; row: AgentRowState }) {
+  if (row.status === 'idle' || row.status === 'running') {
+    return <RunningRow name={name} startedAt={row.status === 'running' ? row.startedAt : Date.now()} />;
+  }
+  if (row.status === 'error') {
+    return (
+      <div className="flex items-start gap-3 text-sm">
+        <div className="w-32 shrink-0 font-mono text-xs text-muted-foreground">{name}</div>
+        <span className="text-destructive text-xs">error: {row.error}</span>
+      </div>
+    );
+  }
+  return <DoneRow name={name} verdict={row.verdict} durationMs={row.durationMs} />;
+}
+
+function RunningRow({ name, startedAt }: { name: AgentName; startedAt: number }) {
+  const [elapsed, setElapsed] = useState(0);
+  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    tickRef.current = setInterval(() => setElapsed(Date.now() - startedAt), 33);
+    return () => { if (tickRef.current) clearInterval(tickRef.current); };
+  }, [startedAt]);
   return (
     <div className="flex items-start gap-3 text-sm">
-      <div className="w-32 shrink-0 font-mono text-xs text-muted-foreground">{verdict.agent}</div>
+      <div className="w-32 shrink-0 font-mono text-xs text-muted-foreground flex items-center gap-2">
+        <span className="inline-block size-1.5 rounded-full bg-sky-500 animate-pulse" />
+        {name}
+      </div>
+      <span className="px-2 py-0.5 rounded border text-[11px] bg-sky-500/10 border-sky-500/30 text-sky-700 dark:text-sky-300 shrink-0 animate-pulse">
+        running…
+      </span>
+      <div className="text-muted-foreground text-xs leading-snug font-mono tabular-nums">{elapsed}ms</div>
+    </div>
+  );
+}
+
+function DoneRow({ name, verdict, durationMs }: { name: AgentName; verdict: Verdict; durationMs: number }) {
+  const tone = recommendationTone(verdict.recommendation);
+  return (
+    <div className="flex items-start gap-3 text-sm animate-in fade-in slide-in-from-left-1 duration-300">
+      <div className="w-32 shrink-0 font-mono text-xs text-muted-foreground flex items-center gap-2">
+        <span className="inline-block size-1.5 rounded-full bg-emerald-500" />
+        {name}
+      </div>
       <span className={`px-2 py-0.5 rounded border text-[11px] shrink-0 ${tone}`}>{verdict.recommendation}</span>
-      <div className="text-muted-foreground text-xs leading-snug">{verdict.rationale}</div>
+      <div className="text-muted-foreground text-xs leading-snug flex-1 min-w-0">{verdict.rationale}</div>
+      <div className="text-[10px] font-mono tabular-nums text-muted-foreground shrink-0">{durationMs}ms</div>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import type { Schedule } from '@/lib/types';
 
 type Props = {
@@ -9,6 +10,25 @@ type Props = {
 
 function gbp(n: number): string {
   return `£${n.toLocaleString('en-GB', { maximumFractionDigits: 0 })}`;
+}
+
+// Tween a number from 0 → target over `duration` ms with eased steps.
+function useCountUp(target: number, duration = 1200): number {
+  const [v, setV] = useState(0);
+  useEffect(() => {
+    if (target === 0) { setV(0); return; }
+    let raf: number;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3); // ease-out cubic
+      setV(Math.round(target * eased));
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration]);
+  return v;
 }
 
 export function SavingsCounter({ schedule, executeResult }: Props) {
@@ -21,9 +41,11 @@ export function SavingsCounter({ schedule, executeResult }: Props) {
   }
   const flagged = schedule.entries.filter((e) => e.reason === 'flagged').length;
   const autoPaid = schedule.entries.length - flagged;
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const savingTween = useCountUp(schedule.totalSaving);
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-      <Stat label="£ saved (vs naive)" value={gbp(schedule.totalSaving)} accent="emerald" />
+      <Stat label="£ saved (vs naive)" value={gbp(savingTween)} accent="emerald" />
       <Stat label="Floor breaches avoided" value={schedule.breachesAvoidedVsBaseline.toString()} accent="emerald" />
       <Stat label="Auto-paid silently" value={`${autoPaid} / ${schedule.entries.length}`} />
       <Stat label="Flagged for human" value={flagged.toString()} accent="amber" />

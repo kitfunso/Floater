@@ -12,8 +12,9 @@ export const cashImpactAgent: SubAgent = {
   name: 'cash-impact',
   async run(input: AgentInput): Promise<AgentRunResult> {
     const startedAt = Date.now();
-    // Tiny stagger keeps the parallelism timestamp strip honest in the UI.
-    await new Promise((r) => setTimeout(r, 40));
+    // Modest latency so the running -> done transition is visible in the UI.
+    // Cash-impact is the middle pole.
+    await new Promise((r) => setTimeout(r, 240));
 
     const { invoice, forecast } = input;
 

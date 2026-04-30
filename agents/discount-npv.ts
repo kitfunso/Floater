@@ -11,7 +11,8 @@ export const discountNpvAgent: SubAgent = {
   name: 'discount-npv',
   async run(input: AgentInput): Promise<AgentRunResult> {
     const startedAt = Date.now();
-    await new Promise((r) => setTimeout(r, 25));
+    // Pure compute is fastest; resolves first in the UI.
+    await new Promise((r) => setTimeout(r, 140));
 
     const { invoice, distressScore, vendor } = input;
 

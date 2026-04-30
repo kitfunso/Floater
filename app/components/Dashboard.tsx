@@ -68,14 +68,27 @@ export function Dashboard({ invoices, vendors, forecast, autoPayRules, escalateR
     }
   }
 
+  // Demo flow step inferred from state: 1 Optimise -> 2 Investigate -> 3 Specter -> 4 Execute
+  const currentStep = !schedule ? 1
+    : decisions.length === 0 ? 2
+    : executeResult ? 4
+    : 3;
+
   return (
     <main className="min-h-screen p-6 max-w-[1400px] mx-auto space-y-6">
       <header className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Floater</h1>
-          <p className="text-sm text-muted-foreground">
-            AP scheduling agent. Auto-pay clean invoices, escalate the wobbly ones.
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="size-10 rounded-lg bg-gradient-to-br from-emerald-500 to-sky-500 flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-emerald-500/20">F</div>
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight">Floater</h1>
+            <p className="text-sm text-muted-foreground">
+              AP scheduling agent. Auto-pay clean invoices, escalate the wobbly ones.
+            </p>
+          </div>
+          <span className="ml-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-[10px] font-medium text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">
+            <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            Live demo
+          </span>
         </div>
         <div className="flex items-center gap-3">
           <Button onClick={runOptimise} disabled={optimising} size="lg">
@@ -91,6 +104,8 @@ export function Dashboard({ invoices, vendors, forecast, autoPayRules, escalateR
           </Button>
         </div>
       </header>
+
+      <DemoStepper current={currentStep} />
 
       <SavingsCounter schedule={schedule} executeResult={executeResult} />
 
@@ -119,5 +134,42 @@ export function Dashboard({ invoices, vendors, forecast, autoPayRules, escalateR
         <PolicyPanel autoPayRules={autoPayRules} escalateRules={escalateRules} />
       </div>
     </main>
+  );
+}
+
+function DemoStepper({ current }: { current: number }) {
+  const steps = [
+    { n: 1, label: 'Optimise',      hint: 'click Optimise' },
+    { n: 2, label: 'Investigate',   hint: 'expand a flagged card' },
+    { n: 3, label: 'Specter alert', hint: 'trigger the alert' },
+    { n: 4, label: 'Execute',       hint: 'commit the schedule' },
+  ];
+  return (
+    <ol className="flex items-center gap-1 text-xs overflow-x-auto">
+      {steps.map((s, i) => {
+        const done = current > s.n;
+        const active = current === s.n;
+        return (
+          <li key={s.n} className="flex items-center gap-1 shrink-0">
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all ${
+              active ? 'border-emerald-500/60 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 shadow-sm shadow-emerald-500/10' :
+              done ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-700/80 dark:text-emerald-400/80' :
+              'border-border bg-muted/30 text-muted-foreground'
+            }`}>
+              <span className={`inline-flex items-center justify-center size-5 rounded-full text-[10px] font-bold ${
+                active ? 'bg-emerald-500 text-white animate-pulse' :
+                done ? 'bg-emerald-500/80 text-white' :
+                'bg-muted text-muted-foreground'
+              }`}>{done ? '✓' : s.n}</span>
+              <span className="font-medium">{s.label}</span>
+              {active && <span className="text-[10px] text-muted-foreground">- {s.hint}</span>}
+            </div>
+            {i < steps.length - 1 && (
+              <div className={`h-px w-4 ${current > s.n ? 'bg-emerald-500/40' : 'bg-border'}`} />
+            )}
+          </li>
+        );
+      })}
+    </ol>
   );
 }
