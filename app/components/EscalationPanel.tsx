@@ -16,6 +16,8 @@ type Props = {
 type InvestigateResult = {
   verdicts: Verdict[];
   parallelism: { spreadMs: number; durationMs: number };
+  narration?: string;
+  effectiveDistress?: number;
 };
 
 type CardState = {
@@ -23,9 +25,10 @@ type CardState = {
   result: InvestigateResult | null;
   decisionMade: 'approve' | 'defer' | 'reject' | null;
   error: string | null;
+  alertActive: boolean;
 };
 
-const initialCardState: CardState = { loading: false, result: null, decisionMade: null, error: null };
+const initialCardState: CardState = { loading: false, result: null, decisionMade: null, error: null, alertActive: false };
 
 function gbp(n: number): string {
   return `£${n.toLocaleString('en-GB', { maximumFractionDigits: 0 })}`;
@@ -56,14 +59,16 @@ export function EscalationPanel({ schedule, invoices, vendors, onScheduleChange 
     setCardStates((s) => ({ ...s, [invoiceId]: { ...getState(invoiceId), ...patch } }));
   }
 
-  async function investigate(invoiceId: string) {
+  async function investigate(invoiceId: string, forceDistress?: number) {
     if (!schedule) return;
-    setState(invoiceId, { loading: true, error: null });
+    setState(invoiceId, { loading: true, error: null, alertActive: forceDistress !== undefined });
     try {
+      const body: Record<string, unknown> = { scheduleId: schedule.scheduleId, invoiceId };
+      if (forceDistress !== undefined) body.forceDistress = forceDistress;
       const res = await fetch('/api/investigate', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ scheduleId: schedule.scheduleId, invoiceId }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`investigate ${res.status}`);
       const result: InvestigateResult = await res.json();
@@ -71,6 +76,16 @@ export function EscalationPanel({ schedule, invoices, vendors, onScheduleChange 
     } catch (e) {
       setState(invoiceId, { loading: false, error: (e as Error).message });
     }
+  }
+
+  async function triggerSpecterAlert() {
+    if (!schedule) return;
+    // Demo trigger: flip INV-FLOOR-BREACH's vendor to high distress and
+    // re-investigate. The card colour flips and the recommendation moves
+    // to "defer" - the live demo moment for the rubric "earned HITL" beat.
+    const target = schedule.escalations.find((e) => e.invoiceId === 'INV-FLOOR-BREACH');
+    if (!target) return;
+    await investigate(target.invoiceId, 0.7);
   }
 
   async function decide(invoiceId: string, verdict: 'approve' | 'defer' | 'reject') {
@@ -91,13 +106,16 @@ export function EscalationPanel({ schedule, invoices, vendors, onScheduleChange 
 
   return (
     <section className="space-y-3">
-      <div className="flex items-baseline justify-between">
+      <div className="flex items-baseline justify-between gap-3 flex-wrap">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           Escalations ({schedule.escalations.length})
         </h2>
-        <p className="text-xs text-muted-foreground">
-          Each card runs 3 sub-agents in parallel via @cursor/sdk on click.
-        </p>
+        <div className="flex items-center gap-3">
+          <p className="text-xs text-muted-foreground">3 sub-agents fan out via @cursor/sdk</p>
+          <Button onClick={triggerSpecterAlert} size="sm" variant="outline">
+            Trigger Specter alert
+          </Button>
+        </div>
       </div>
       {schedule.escalations.map((esc) => {
         const inv = invById.get(esc.invoiceId);
@@ -105,13 +123,15 @@ export function EscalationPanel({ schedule, invoices, vendors, onScheduleChange 
         const entry = schedule.entries.find((e) => e.invoiceId === esc.invoiceId);
         if (!inv || !vendor || !entry) return null;
         const state = getState(esc.invoiceId);
+        const effective = state.result?.effectiveDistress ?? entry.distressScore;
         return (
           <InvoiceCard
             key={esc.invoiceId}
             escalation={esc}
             invoice={inv}
             vendor={vendor}
-            distressScore={entry.distressScore}
+            distressScore={effective}
+            originalDistress={entry.distressScore}
             payDate={entry.payDate}
             state={state}
             onInvestigate={() => investigate(esc.invoiceId)}
@@ -127,7 +147,8 @@ type CardProps = {
   escalation: Escalation;
   invoice: Invoice;
   vendor: Vendor;
-  distressScore: number;
+  distressScore: number;       // effective (post-alert) score for UI
+  originalDistress: number;
   payDate: string;
   state: CardState;
   onInvestigate: () => void;
@@ -140,7 +161,8 @@ function severityBorder(distressScore: number, dissent: boolean): string {
   return 'border-emerald-500/40 bg-emerald-500/5';
 }
 
-function InvoiceCard({ escalation, invoice, vendor, distressScore, payDate, state, onInvestigate, onDecide }: CardProps) {
+function InvoiceCard({ escalation, invoice, vendor, distressScore, originalDistress, payDate, state, onInvestigate, onDecide }: CardProps) {
+  const alertActive = state.alertActive && distressScore !== originalDistress;
   const dissent = state.result
     ? new Set(state.result.verdicts.map((v) => v.recommendation)).size > 1
     : false;
@@ -159,6 +181,7 @@ function InvoiceCard({ escalation, invoice, vendor, distressScore, payDate, stat
           </div>
           <div className="flex flex-col items-end gap-1 shrink-0">
             <SpecterBadge score={distressScore} />
+            {alertActive && <Badge variant="destructive" className="text-[10px]">SPECTER ALERT</Badge>}
             <Badge variant="outline" className="text-[10px]">{vendor.paymentHistory}</Badge>
           </div>
         </div>
@@ -173,6 +196,11 @@ function InvoiceCard({ escalation, invoice, vendor, distressScore, payDate, stat
         {state.error && <p className="text-sm text-destructive">Error: {state.error}</p>}
         {state.result && (
           <>
+            {state.result.narration && (
+              <div className="text-sm rounded-md border bg-muted/40 p-2 italic">
+                {state.result.narration}
+              </div>
+            )}
             <div className="text-[11px] text-muted-foreground font-mono tabular-nums">
               3 agents · spread {state.result.parallelism.spreadMs}ms · wallclock {state.result.parallelism.durationMs}ms
             </div>

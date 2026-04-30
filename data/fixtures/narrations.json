@@ -1,0 +1,7 @@
+{
+  "INV-LARGE-NEW": "New vendor, no payment history, £8,000 above the auto-pay threshold. Confirm by phone before sending cash.",
+  "INV-SPECTER-DISTRESSED": "Specter flags vendor distress at 0.72. Defer past due date and run a relationship call before paying.",
+  "INV-FLOOR-BREACH": "Pay-on-due breaches the £40k cash floor on day 7. Stretched to next AR receipt; human can override.",
+  "INV-FLOOR-BREACH-AFTER-ALERT": "Specter alert flipped during the run: vendor now distressed AND payment would have breached floor. Defer 14 days, escalate relationship.",
+  "_default": "Sub-agents disagree on timing - human decision needed. See per-agent rationale below."
+}
