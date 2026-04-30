@@ -11,6 +11,7 @@ import { CalendarView } from './CalendarView';
 import { SavingsCounter } from './SavingsCounter';
 import { PolicyPanel } from './PolicyPanel';
 import { EscalationPanel } from './EscalationPanel';
+import { SetupBand } from './SetupBand';
 import { Button } from '@/components/ui/button';
 
 type Props = {
@@ -106,6 +107,8 @@ export function Dashboard({ invoices, vendors, forecast, autoPayRules, escalateR
       </header>
 
       <DemoStepper current={currentStep} />
+
+      <SetupBand invoices={invoices} forecast={forecast} />
 
       <SavingsCounter schedule={schedule} executeResult={executeResult} />
 
