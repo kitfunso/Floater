@@ -1,14 +1,14 @@
 // Deterministic seed for Floater. Produces:
-//   data/vendors.json    — 12 vendors (10 reliable, 1 distressed (V-009), 1 new (V-010))
+//   data/vendors.json    — 12 vendors (10 reliable, V-009 distressed in Specter, V-010 NEW)
 //   data/invoices.json   — 40 invoices, hand-tuned so the optimiser yields exactly
 //                          [INV-LARGE-NEW, INV-SPECTER-DISTRESSED, INV-FLOOR-BREACH]
 //                          as the escalation set under DEMO_REPLAY=1.
 //   data/cash-forecast.json — 60-day forecast: opening £80k, floor £40k,
-//                          rent day 0, AR every Friday, payroll days 28 + 56.
+//                          rent day 0, AR every Friday £30k, payroll days 28 + 56.
 //
 // Run: npx tsx scripts/seed.ts
 //
-// No RNG. Re-running this script produces byte-identical output.
+// No RNG. Re-running produces byte-identical output.
 
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -48,13 +48,24 @@ const vendors: Vendor[] = [
 // ============================================================
 // Forecast
 // ============================================================
+//
+// AR £40k each (8×£40k = £320k) leaves enough headroom that DISC pay-earlies
+// clustered in days 2-15 don't push the schedule under the floor on the same
+// day INV-FB stretches to. Math:
+//   cash7 (no INV-FB) ≈ 80 - 8 - 31.5 (INV-EARLY) + 40 (AR day 4) = £80.5k
+//   pay INV-FB £45k → £35.5k → below £40k floor → BREACH triggers
+//   stretch INV-FB to day 11: 80.5 + 40 (AR 11) - 45 = £75.5k buffer for the
+//   ~£32k of DISC pay-earlies that land days 2-15 → still above floor.
 
 const forecast: Forecast = (() => {
   const flows: CashFlow[] = [];
   flows.push({ date: dayToISO(0), inflow: 0, outflow: 8_000, label: 'Office rent' });
-  // AR receipts every Friday: opening Mon 2026-05-04, so first Fri is day 4.
-  for (const day of [4, 11, 18, 25, 32, 39, 46, 53]) {
-    flows.push({ date: dayToISO(day), inflow: 20_000, outflow: 0, label: 'AR receipt' });
+  // Day-4 AR is intentionally smaller to keep day-7 cash tight enough that
+  // INV-FB at £45k pay-on-due breaches the floor. Subsequent ARs are larger
+  // so DISC pay-earlies clustered days 8-30 don't cascade into breaches.
+  flows.push({ date: dayToISO(4),  inflow: 30_000, outflow: 0, label: 'AR receipt' });
+  for (const day of [11, 18, 25, 32, 39, 46, 53]) {
+    flows.push({ date: dayToISO(day), inflow: 45_000, outflow: 0, label: 'AR receipt' });
   }
   flows.push({ date: dayToISO(28), inflow: 0, outflow: 30_000, label: 'Payroll' });
   flows.push({ date: dayToISO(56), inflow: 0, outflow: 30_000, label: 'Payroll' });
@@ -74,9 +85,9 @@ type InvoiceSeed = {
   vendorId: string;
   amount: number;
   dueDay: number;
-  netDays: number;          // 30 typical
-  discountPct?: number;     // 0.02 or 0.05
-  discountDays?: number;    // 10
+  netDays: number;
+  discountPct?: number;
+  discountDays?: number;
   category: string;
 };
 
@@ -128,30 +139,39 @@ seeds.push({
   category: 'logistics',
 });
 
-// ----- 5 plain net 30 invoices, due days 1..6 (forces day-7 floor pressure) -----
-const earlyVendors = ['V-002', 'V-003', 'V-004', 'V-005', 'V-006'];
-for (let i = 0; i < 5; i++) {
+// ----- 7 plain net 30 invoices, dueDays 1..6 (forces day-7 floor pressure) -----
+const earlySeeds: Array<[string, number, number]> = [
+  // [vendorId, dueDay, amount]
+  ['V-002', 1, 4500],
+  ['V-003', 2, 4400],
+  ['V-004', 3, 4600],
+  ['V-005', 4, 4500],
+  ['V-006', 5, 4400],
+  ['V-007', 6, 4500],
+  ['V-008', 6, 4600],
+];
+earlySeeds.forEach(([vendorId, dueDay, amount], i) => {
   seeds.push({
     id: `INV-EARLY-${String(i + 1).padStart(2, '0')}`,
-    vendorId: earlyVendors[i]!,
-    amount: 3_000 + i * 200,           // 3000, 3200, 3400, 3600, 3800 = £17k total
-    dueDay: i + 2,                     // due days 2..6
+    vendorId: vendorId!,
+    amount: amount!,
+    dueDay: dueDay!,
     netDays: 30,
     category: 'supplies',
   });
-}
+});
 
-// ----- 26 invoices with 5/10 net 30 (the auto-discount workhorses) -----
-// Hand-picked amounts/dates so total ≥ £70k → saving £3500.
-// Issued days vary; due days spread across 15..58. Pay-early dates = issued + 10.
+// ----- 18 invoices with 5/10 net 30 (the auto-discount workhorses) -----
+// dueDays bounded [22, 50] so pay-early dates (issuedDay+10) are >= day 2 and
+// <= day 30 — funded by AR receipts before the post-day-53 dry period.
 const fiveTenVendors = ['V-001','V-002','V-003','V-004','V-006','V-007','V-008','V-011','V-012'];
 const fiveTenSchedule: Array<[number, number]> = [
-  // [dueDay, amount]
-  [15, 2700], [17, 2800], [19, 2500], [22, 2900], [24, 2600], [26, 2700],
-  [29, 2800], [31, 2500], [33, 2900], [35, 2600], [37, 2700], [38, 2800],
-  [40, 2500], [42, 2900], [44, 2600], [45, 2700], [47, 2800], [49, 2500],
-  [51, 2900], [52, 2600], [54, 2700], [55, 2800], [56, 2500], [57, 2900],
-  [58, 2600], [58, 2700],
+  // [dueDay, amount]   — every amount under £5k auto-pay threshold
+  [22, 4300], [24, 4400], [26, 4200], [28, 4500],
+  [30, 4300], [32, 4100], [34, 4400], [36, 4300],
+  [38, 4500], [40, 4200], [41, 4300], [43, 4400],
+  [45, 4300], [46, 4200], [48, 4400], [49, 4300],
+  [50, 4500], [50, 4100],
 ];
 fiveTenSchedule.forEach(([dueDay, amount], i) => {
   seeds.push({
@@ -166,10 +186,11 @@ fiveTenSchedule.forEach(([dueDay, amount], i) => {
   });
 });
 
-// ----- 6 invoices with 2/10 net 30 -----
-const twoTenVendors = ['V-007','V-008','V-011','V-012','V-002','V-003'];
+// ----- 9 invoices with 2/10 net 30 -----
+const twoTenVendors = ['V-007','V-008','V-011','V-012','V-002','V-003','V-001','V-004','V-006'];
 const twoTenSchedule: Array<[number, number]> = [
-  [16, 1400], [25, 1500], [30, 1600], [40, 1500], [48, 1400], [55, 1600],
+  [21, 1500], [25, 1700], [29, 1400], [31, 1600], [37, 1800],
+  [42, 1500], [44, 1700], [47, 1400], [49, 1600],
 ];
 twoTenSchedule.forEach(([dueDay, amount], i) => {
   seeds.push({
@@ -181,6 +202,23 @@ twoTenSchedule.forEach(([dueDay, amount], i) => {
     discountPct: 0.02,
     discountDays: 10,
     category: 'professional',
+  });
+});
+
+// ----- 3 plain net 30 mid-window invoices -----
+const plainMidSeeds: Array<[string, number, number]> = [
+  ['V-005', 23, 1100],
+  ['V-005', 35, 900],
+  ['V-005', 44, 1000],
+];
+plainMidSeeds.forEach(([vendorId, dueDay, amount], i) => {
+  seeds.push({
+    id: `INV-PLAIN-${String(i + 1).padStart(2, '0')}`,
+    vendorId: vendorId!,
+    amount: amount!,
+    dueDay: dueDay!,
+    netDays: 30,
+    category: 'other',
   });
 });
 
@@ -198,7 +236,6 @@ for (const id of escalationIds) {
   if (!invoices.find((inv) => inv.id === id)) throw new Error(`Missing escalation invoice ${id}`);
 }
 
-// Discount eligibility headline (saving floor for the demo metric).
 const discountTotal = invoices
   .filter((inv) => inv.discountPct && inv.discountDays)
   .reduce((sum, inv) => sum + inv.amount * (inv.discountPct ?? 0), 0);
