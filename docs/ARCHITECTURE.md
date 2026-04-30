@@ -6,33 +6,41 @@
 [Mock invoice JSON]
        │
        ▼
-[POST /api/optimise] ──► lib/optimiser.ts (greedy + cash-floor)
+[POST /api/optimise]
        │
-       ├──► auto-pay queue   (small + clean + cash-safe)
+       ├──► lib/specter.ts (pre-fetch distressScores for every vendor, MCP w/ HTTP fallback)
+       ├──► lib/optimiser.ts (greedy + cash-floor + max-stretch)
+       │       │
+       │       ├──► auto-pay queue   (small + clean + cash-safe)
+       │       └──► flagged set
        │
-       └──► flagged set
-                │
-                ▼
+       └──► persist runs/<scheduleId>.pending.json; return Schedule { scheduleId, ... }
+
 [POST /api/investigate?invoiceId=…]
        │
-       ├──► agents/vendor-health.ts   (Specter MCP via lib/specter.ts)
-       ├──► agents/cash-impact.ts     (lib/optimiser.ts simulate)
+       ├──► agents/vendor-health.ts   (reads pre-fetched Specter score; explains it)
+       ├──► agents/cash-impact.ts     (lib/optimiser.simulate)
        └──► agents/discount-npv.ts    (lib/npv.ts)
                 │
                 ▼
-       [Aggregator in /api/investigate]
+       [Aggregator returns Verdict[]]
                 │
-                ├──► unanimous proceed → schedule (auto)
+                ├──► unanimous proceed → human one-click approve
                 └──► dissent / risk    → escalation panel (HITL)
                                               │
                                               ▼
                                        [POST /api/decide]
                                               │
                                               ▼
-                                       [POST /api/execute]
+                                       [POST /api/execute scheduleId]
+                                              │
+                                              ▼
+                                       runs/<scheduleId>.executed.json
 ```
 
-UI is one page (`app/page.tsx`) reading from these endpoints; calendar, cards, escalation panel, savings counter, policy panel are client components.
+`app/page.tsx` is a server component: reads `data/*.json` at the boundary and passes
+props into a client `<Dashboard>` (calendar, cards, escalation panel, savings counter,
+policy panel). Client components fetch via `/api/...`, never read filesystem.
 
 ## Tech Stack
 
@@ -42,7 +50,7 @@ UI is one page (`app/page.tsx`) reading from these endpoints; calendar, cards, e
 | UI components    | Tailwind + shadcn/ui                    | Defaults are good enough for a 4.5h demo; no design polish needed. |
 | Agent runtime    | `@cursor/sdk` (TypeScript)              | Rubric bonus requires structural Cursor SDK usage; local runtime for hackathon speed, cloud as stretch. |
 | Market intel     | Specter via MCP; HTTP fallback          | Rubric bonus; MCP is the theatrical version, HTTP keeps us shipping if MCP wiring is shaky. |
-| LLM              | OpenAI gpt-5 / gpt-5-mini               | Sub-agent reasoning + escalation narration. Mini for fast parallel calls. |
+| LLM              | OpenAI gpt-5 / gpt-5-mini               | Sub-agent reasoning. Escalation narration is **fixture-cached by `invoiceId`** under `DEMO_REPLAY=1`; live LLM is never on the demo critical path. |
 | Data store       | JSON files in `data/`                   | No DB. Don't lose 45 min to migrations.                          |
 | Math             | Pure TS                                 | Greedy with cash-floor constraint; no LP solver.                 |
 | Deploy           | Vercel                                  | One-command preview URL.                                         |
@@ -141,7 +149,8 @@ type Vendor = {
 };
 ```
 
-**Scheduled output** (constructed in `lib/optimiser.ts`, returned by `/api/optimise`)
+**Scheduled output** (constructed in `lib/optimiser.ts`, returned by `/api/optimise`,
+persisted to `runs/<scheduleId>.pending.json`)
 
 ```ts
 type ScheduleEntry = {
@@ -149,16 +158,24 @@ type ScheduleEntry = {
   payDate: string;            // ISO
   reason: 'auto-discount' | 'auto-due' | 'auto-stretch' | 'flagged';
   projectedSaving: number;    // GBP
+  distressScore: number;      // 0-1, from Specter, copied onto every entry for UI badge
 };
 type Verdict        = { agent: string; recommendation: 'pay-early' | 'pay-on-time' | 'stretch' | 'defer'; rationale: string; score?: number };
 type Escalation     = { invoiceId: string; verdicts: Verdict[]; reasonForEscalation: string };
-type Schedule       = { entries: ScheduleEntry[]; escalations: Escalation[]; totalSaving: number; floorBreaches: number };
+type Schedule       = {
+  scheduleId: string;                  // ULID; persisted to runs/<id>.pending.json
+  entries: ScheduleEntry[];
+  escalations: Escalation[];
+  totalSaving: number;                 // GBP captured in discounts vs naive baseline
+  breachesAvoidedVsBaseline: number;   // count of cash-floor breaches the naive (pay-on-due) schedule would cause that this schedule avoids
+};
 ```
 
-**Constraints / invariants**
-- `cash_balance(t) >= forecast.cashFloor` for every `t` in the 60-day horizon. Never optimise to a breach.
-- Discount taken only if `discountAPR > costOfCapital` AND `vendor.distressScore < 0.3` AND no breach.
-- If `vendor.distressScore > 0.5`, defer past due date (don't prepay the funeral) and escalate.
+**Constraints / invariants** (every `Schedule` returned by `lib/optimiser.ts` must satisfy)
+- `cashBalance(t) >= forecast.cashFloor` for every `t` in the 60-day horizon, **including deferred payments.** Never optimise to a breach.
+- Discount taken only if `discountAPR > costOfCapital` AND `distressScore < 0.3` AND simulator confirms no breach across the whole horizon.
+- If `distressScore > 0.5`, defer to `min(dueDate + 7d, dueDate + MAX_STRETCH_DAYS)` where `MAX_STRETCH_DAYS = 14`, and emit an escalation. Never stretch beyond 14d past due (late-fee + relationship risk).
+- `breachesAvoidedVsBaseline` is computed by running the optimiser twice in `/api/optimise`: once with `forceNaive=true` (always pay on due date) for the baseline, once with the full policy. Diff the breach count.
 
 No indexes, no relationships beyond `Invoice.vendorId → Vendor.id` (linear scan; max 50 invoices).
 
@@ -168,31 +185,37 @@ All routes are unauthenticated (single demo session). All accept / return JSON. 
 
 | Method | Path                  | Body                                    | Returns                  | Purpose                                |
 |--------|-----------------------|-----------------------------------------|--------------------------|----------------------------------------|
-| POST   | `/api/optimise`       | `{}`                                    | `Schedule`               | Run full greedy optimiser, return proposed schedule + escalations. |
-| POST   | `/api/investigate`    | `{ invoiceId: string }`                 | `{ verdicts: Verdict[] }`| Spawn 3 Cursor sub-agents in parallel; return verdicts. |
-| POST   | `/api/execute`        | `{ scheduleId: string }`                | `{ executed: number }`   | Commit auto-pay queue (writes a `runs/` JSON for replay). |
-| POST   | `/api/decide`         | `{ invoiceId: string; verdict: 'approve' | 'defer' | 'reject'; reason: string }` | `{ ok: true }` | Human decision on an escalation; appended to run log. |
+| POST   | `/api/optimise`       | `{}`                                    | `Schedule`               | Pre-fetch Specter scores for all vendors, run baseline + full optimiser, mint `scheduleId`, write `runs/<scheduleId>.pending.json`, return Schedule + escalations. |
+| POST   | `/api/investigate`    | `{ invoiceId: string; scheduleId: string }` | `{ verdicts: Verdict[] }` | Read `runs/<scheduleId>.pending.json` for the pre-fetched distress score. Spawn 3 Cursor sub-agents in parallel via `lib/cursor.ts::fanOut`; return verdicts. Cache by `(scheduleId, invoiceId)`. |
+| POST   | `/api/execute`        | `{ scheduleId: string }`                | `{ executed: number }`   | Read pending schedule, append decisions, write `runs/<scheduleId>.executed.json`. Idempotent: re-execute returns the existing executed log. |
+| POST   | `/api/decide`         | `{ scheduleId: string; invoiceId: string; verdict: 'approve' | 'defer' | 'reject'; reason: string }` | `{ ok: true }` | Append decision to `runs/<scheduleId>.decisions.jsonl`. |
 
 Auth model: none. All rails read mock JSON; nothing leaves the box except Specter and OpenAI calls.
 
 ## Service Boundaries
 
-- **`lib/`** — pure TS, no Next.js imports, no React. Reusable from API routes and tests.
+- **`lib/`** — pure TS, no Next.js imports, no React, no `fs` reads. Reusable from API routes and tests.
+- **`lib/policy.ts`** — single source of truth. Exports `AUTO_PAY_RULES` and `ESCALATE_RULES` as data (typed const arrays). `app/components/PolicyPanel.tsx` imports these constants directly. No duplicate string literals; if rule text drifts, the type-checker catches it.
 - **`agents/`** — task definitions consumed by `lib/cursor.ts`. Each exports a `run(input)` returning a `Verdict`.
-- **`app/api/`** — thin HTTP wrappers over `lib/` and `agents/`. No business logic.
-- **`app/components/`** — React only. Fetches via `fetch('/api/…')`. No direct file reads.
+- **`app/api/`** — thin HTTP wrappers over `lib/` and `agents/`. Only place that does `fs` reads + Zod parsing.
+- **`app/page.tsx`** — server component. Reads `data/*.json` once, passes props to `<Dashboard>` (client component).
+- **`app/components/`** — React only. Fetches via `fetch('/api/…')`. No direct file reads, no static JSON imports.
 - **`scripts/seed.ts`** — only writer to `data/`. Hand-tuned to guarantee 3 deterministic escalation cases.
 
 Rule: if a function touches both a request object and the optimiser, it lives in the API route, not in `lib/`.
 
 ## Data Flow (primary use case: Optimise → Investigate → Decide → Execute)
 
-1. UI loads → `GET` mock data via static imports (initial render).
-2. User clicks **Optimise** → `POST /api/optimise` reads JSON, runs `lib/optimiser.ts`, returns `Schedule` with auto-pay entries + flagged escalations.
-3. Calendar component animates the new dates; SavingsCounter increments.
-4. For each flagged invoice the EscalationPanel calls `POST /api/investigate` → fan-out via `lib/cursor.ts` to three sub-agents in parallel, returns 3 verdicts.
-5. Aggregator inside `/api/investigate` (or client-side) renders the cards: unanimous-proceed turns green, dissent stays in the panel.
-6. User clicks **Approve / Defer / Reject** → `POST /api/decide` records reason + decision in `runs/<id>.json`.
-7. User clicks **Execute** → `POST /api/execute` finalises auto-pay queue and writes the run log. UI shows total saved + breaches avoided.
+1. Server `app/page.tsx` reads `data/*.json` and passes initial state into client `<Dashboard>`.
+2. User clicks **Optimise** → `POST /api/optimise`. Route handler:
+   a. Reads `data/*.json`.
+   b. Pre-fetches Specter `distressScore` for every vendor in parallel (`Promise.all`), using DEMO_REPLAY fixtures when set.
+   c. Runs the optimiser twice: once with `forceNaive=true` for baseline, once full. Diffs breach counts.
+   d. Mints `scheduleId` (ULID), writes `runs/<scheduleId>.pending.json`, returns `Schedule`.
+3. Calendar animates new dates; SavingsCounter increments. Every `InvoiceCard` shows a Specter score badge.
+4. For each flagged invoice the EscalationPanel calls `POST /api/investigate { scheduleId, invoiceId }` → fan-out via `lib/cursor.ts` to three sub-agents in parallel, returns 3 verdicts. Cache hit on second click.
+5. Cards render: unanimous proceed turns green, dissent stays amber, distressScore > 0.5 turns red.
+6. User clicks **Approve / Defer / Reject** → `POST /api/decide { scheduleId, invoiceId, verdict, reason }` → appends to `runs/<scheduleId>.decisions.jsonl`.
+7. User clicks **Execute** → `POST /api/execute { scheduleId }` → reads pending + decisions, writes `runs/<scheduleId>.executed.json`. UI shows total saved + breaches avoided.
 
-Latency targets: `/api/optimise` < 200 ms (pure TS over 50 invoices). `/api/investigate` < 3 s (three parallel sub-agent calls; cache by invoiceId for demo determinism).
+Latency targets: `/api/optimise` < 500 ms (Specter pre-fetch is the long pole; pure TS optimiser < 50 ms over 50 invoices). `/api/investigate` < 3 s on first call (three parallel sub-agent calls); < 50 ms on cache hit.

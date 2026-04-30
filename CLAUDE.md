@@ -9,11 +9,11 @@ See `docs/ARCHITECTURE.md`. Stack: Next.js 15 App Router + Tailwind + shadcn/ui,
 ## Non-Negotiable Rules
 
 1. **`.env.local` is gitignored before any key is written.** The Specter key in the brief is shared and assumed burned post-event. Why: leaking the key fails the security rubric and the event organisers will rotate it on us.
-2. **Never breach the cash floor.** `cashBalance(t) >= forecast.cashFloor` for every `t` in the 60-day horizon, on every schedule produced by `lib/optimiser.ts`. Why: the entire pitch is "guardrails as code". A breach in the demo loses the rubric.
-3. **HITL escalation is earned, not blanket.** Auto-pay only when ALL of: amount < £5k, vendor has >=3 prior on-time payments, no Specter alerts in 30d, sub-agents unanimous, cash floor preserved. Otherwise escalate. Why: the rubric specifically rewards "obvious what it will and will not do" with visible thresholds.
+2. **Never breach the cash floor, including under deferred payments.** `cashBalance(t) >= forecast.cashFloor` for every `t` in the 60-day horizon. Defers respect a hard cap: `MAX_STRETCH_DAYS = 14` past `dueDate`. Why: a breach kills the demo, and stretching beyond two weeks creates late-fee + relationship risk that the pitch can't defend.
+3. **HITL escalation is earned, not blanket.** Auto-pay only when ALL of: `amount < £5k`, vendor `paymentHistory == 'reliable'` (>=3 prior on-time), `distressScore < 0.3`, cash floor preserved across the full horizon. Sub-agents do **not** gate auto-pay; they only run on flagged invoices via `/api/investigate`. Otherwise escalate. Why: judges see "obvious what it will and will not do" without spawning agents on every line item.
 4. **Sub-agents must fan out in parallel via `@cursor/sdk`.** Not sequential, not "an agent that calls tools". Three concurrent agent runs per flagged invoice. Why: this is the structural Cursor SDK usage that earns the 3-pt bonus. Sequential calls do not.
 5. **Specter is a decision input, not decoration.** `vendor.distressScore` from Specter directly gates the pay-early branch in `lib/optimiser.ts`. Why: rubric says "structural", not "name-checked".
-6. **Deterministic demo.** Seed mocks so the same 3 escalation cases fire every run (large+new vendor, Specter alert, cash breach). Cache sub-agent verdicts by `invoiceId` during a session. Why: live LLM variance kills demos.
+6. **Deterministic demo.** Seed mocks so the same 3 escalation cases fire every run (large+new vendor, Specter alert, cash breach). `DEMO_REPLAY=1` swaps Specter + OpenAI for fixtures; LLM narration is fixture-cached by `invoiceId` and **never live in the demo critical path**. Why: live LLM variance kills demos.
 7. **No DB, no migrations, no auth.** JSON files in `data/`, run logs in `runs/`. Why: 4.5h. Schema work is the easiest way to lose the build.
 8. **Never use `--no-verify` on commits.** Why: project-wide rule across Keith's repos; hooks are there to catch leaked keys.
 
@@ -32,7 +32,7 @@ See `docs/ARCHITECTURE.md`. Stack: Next.js 15 App Router + Tailwind + shadcn/ui,
 Read before editing in their area:
 
 - `lib/optimiser.ts` - the schedule producer. Cash-floor invariant lives here. Don't touch without re-running the seeded test cases.
-- `lib/policy.ts` - the auto-pay vs escalate thresholds. Mirror this exactly into `app/components/PolicyPanel.tsx` so what's on screen matches what runs.
+- `lib/policy.ts` - the auto-pay vs escalate thresholds. Exports `AUTO_PAY_RULES` and `ESCALATE_RULES` as typed `const` arrays. `app/components/PolicyPanel.tsx` imports them directly. Never duplicate rule text in the UI; if the panel literal drifts from the runtime, judges will catch it.
 - `lib/cursor.ts` - the Cursor SDK fan-out. If sub-agents stop running in parallel, the bonus is gone.
 - `data/invoices.json` + `scripts/seed.ts` - the demo cases are hand-tuned; regenerating breaks the script.
 - `.env.local.example` - the source of truth for required env vars. Update when adding a new key.
@@ -49,6 +49,8 @@ Read before editing in their area:
 - **Calling sub-agents sequentially** because `await` is easier than `Promise.all`. This kills the bonus. Use `Promise.all` over an array of agent runs.
 - **Reading `data/*.json` inside `lib/`** for "convenience". Breaks testability and replay. Read in the API route, pass data in.
 - **Letting `/api/optimise` mutate `data/invoices.json`.** It must be read-only. Run logs go to `runs/`.
-- **Showing escalations the policy didn't actually flag.** The PolicyPanel must reflect `lib/policy.ts` exactly. If they drift, judges notice.
+- **Showing escalations the policy didn't actually flag.** The PolicyPanel must `import { AUTO_PAY_RULES, ESCALATE_RULES } from 'lib/policy'`. Never re-write the rules as JSX strings.
 - **Spending >30 min on calendar visuals.** Fall back to a coloured table sorted by date if Gantt eats time. The savings counter and escalation panel are the demo, not the calendar.
-- **Forgetting to wire the OpenAI narration.** Each escalation card needs a one-liner explanation; without it, the cards look raw.
+- **Running live LLM on the demo critical path.** Pre-bake narration fixtures keyed by `invoiceId` under `DEMO_REPLAY=1`. A flaky network during the pitch is the only fail you can't unwind.
+- **Static-importing `data/*.json` from a client component.** `page.tsx` is a server component; pass props down. Mixing static import + `/api/optimise` reads of the same file is asymmetric and hides bugs.
+- **Letting `floorBreaches` mean two things.** The schedule field is `breachesAvoidedVsBaseline` (count > 0 = optimiser saved a breach). The optimiser's own output is always 0; if it isn't, the invariant is broken — fail the test, don't ship the schedule.

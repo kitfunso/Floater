@@ -33,20 +33,22 @@ SMB finance teams leave material discount income on the table (2/10 net 30 ≈ 3
 **Demo-time (rubric-aligned):**
 - Money visibly moves on a schedule the agent reorders (calendar reshuffles live).
 - £ saved counter > £3,500 on the demo dataset.
-- ≥ 1 cash-floor breach avoided vs naive baseline.
-- Exactly 3 escalations surface on the demo dataset, each exercising a different rule path (large/new vendor, Specter alert, cash breach).
-- Sub-agents fan out in parallel and visibly complete in < 3s for one flagged invoice.
-- Policy panel renders all 5 auto-pay rules and 5 escalate rules.
+- `breachesAvoidedVsBaseline` >= 1 (the optimised schedule prevents at least one cash-floor breach the naive pay-on-due schedule would cause).
+- Exactly 3 escalations surface on the demo dataset, with deterministic IDs (`INV-LARGE-NEW`, `INV-SPECTER-DISTRESSED`, `INV-FLOOR-BREACH`).
+- Specter distress score is visible as a coloured badge on **every** invoice card, not just flagged ones (judges see Specter as structural input).
+- Sub-agents fan out in parallel and the UI renders the timestamp spread (`max - min < 50 ms`) on each escalation card.
+- Policy panel renders all 5 auto-pay rules and 5 escalate rules, sourced directly from `lib/policy.ts` (no duplicated literals).
 
 **Engineering quality:**
 - All four foundation docs (PRD, ARCHITECTURE, CLAUDE.md, Phase 1 plan) committed before code.
 - `.env.local` is gitignored before any key is written.
-- Three demo escalation cases reproducible deterministically (seeded).
+- Three demo escalation cases reproducible deterministically (seeded). A test in `lib/__tests__/seed.test.ts` asserts the exact escalation ID set every commit.
+- Live LLM is never on the demo critical path. `DEMO_REPLAY=1` deploys serve cached narrations.
 
 ## Constraints
-- **Time:** 4.5h build window (hackathon).
+- **Time:** 4.5h hackathon window. Honest internal estimate is 6h. The pre-agreed cuts if 4.5h pinches: (1) Gantt calendar falls back to a coloured table; (2) live LLM narration is dropped entirely (fixtures only).
 - **Team:** Solo (Keith).
-- **Stack lock:** Next.js 15 App Router + Tailwind + shadcn/ui, `@cursor/sdk` (TS), Specter via MCP (HTTP fallback acceptable), OpenAI (gpt-5 / gpt-5-mini), JSON files only.
-- **Bonus rubric:** Must use Cursor SDK structurally (sub-agent fan-out, not just a chat call) and Specter (vendor distress as input to the pay-early decision).
-- **Security:** `SPECTER_API_KEY` in the brief is shared and assumed burned post-event; rotate before any real use.
-- **Deploy:** Vercel preview URL must work in incognito.
+- **Stack lock:** Next.js 15 App Router + Tailwind + shadcn/ui, `@cursor/sdk` (TS), Specter via MCP (HTTP fallback acceptable), OpenAI (gpt-5 / gpt-5-mini, fixture-cached on the demo critical path), JSON files only.
+- **Bonus rubric:** Must use Cursor SDK structurally (parallel sub-agent fan-out via `Promise.all`, not just a chat call) and Specter structurally (`distressScore` pre-fetched in `/api/optimise` and gating the pay-early branch in `lib/optimiser.ts`, with a visible badge on every invoice card).
+- **Security:** `SPECTER_API_KEY` in the brief is shared and assumed burned post-event; rotate before any real use. `.env.local` gitignored before any key is written.
+- **Deploy:** Vercel preview URL must work in incognito with `DEMO_REPLAY=1` set.
