@@ -110,7 +110,7 @@ export function Dashboard({ invoices, vendors, forecast, autoPayRules, escalateR
 
       <SetupBand invoices={invoices} forecast={forecast} />
 
-      <SavingsCounter schedule={schedule} executeResult={executeResult} />
+      <SavingsCounter invoices={invoices} schedule={schedule} executeResult={executeResult} />
 
       {error && (
         <div className="rounded border border-destructive bg-destructive/10 p-3 text-sm text-destructive">
