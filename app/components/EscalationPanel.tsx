@@ -155,7 +155,6 @@ export function EscalationPanel({ schedule, invoices, vendors, onDecisionRecorde
       setState(invoiceId, (prev) => ({ ...prev, decisionMade: verdict }));
       onDecisionRecorded?.({ invoiceId, verdict });
     } catch {
-      // swallow - demo path
     }
   }
 

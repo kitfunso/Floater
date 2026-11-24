@@ -158,7 +158,6 @@ export function optimise(input: OptimiserInput): Schedule {
         entries.push(earlyEntry);
         continue;
       }
-      // Discount would breach — fall through to pay-on-due / stretch.
     }
 
     if (!payOnDueWouldBreach) {
@@ -179,7 +178,7 @@ export function optimise(input: OptimiserInput): Schedule {
     entries.push({
       invoiceId: inv.id,
       payDate: stretched.payDate,
-      reason: 'flagged',     // breach always flags
+      reason: 'flagged',
       projectedSaving: 0,
       distressScore: distress,
     });
@@ -189,10 +188,10 @@ export function optimise(input: OptimiserInput): Schedule {
   const totalSaving = entries.reduce((sum, e) => sum + e.projectedSaving, 0);
 
   return {
-    scheduleId: '',     // route handler mints; left blank for tests
+    scheduleId: '',
     entries,
     escalations,
     totalSaving,
-    breachesAvoidedVsBaseline: 0,   // route handler diffs against forceNaive run
+    breachesAvoidedVsBaseline: 0,
   };
 }

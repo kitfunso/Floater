@@ -22,8 +22,8 @@ const vendors: Vendor[] = [
   { id: 'V-006', name: 'Fjord Software Ltd',    specterId: 'specter-clean-6',  paymentHistory: 'reliable', strategicTier: 1 },
   { id: 'V-007', name: 'Greenline Couriers',    specterId: 'specter-clean-7',  paymentHistory: 'reliable', strategicTier: 2 },
   { id: 'V-008', name: 'Halcyon Energy Co',     specterId: 'specter-clean-8',  paymentHistory: 'reliable', strategicTier: 1 },
-  { id: 'V-009', name: 'Iridium Components',    specterId: 'specter-distressed-1', paymentHistory: 'reliable', strategicTier: 2 }, // distressed in Specter fixture
-  { id: 'V-010', name: 'Jade Studios (NEW)',                                paymentHistory: 'new',      strategicTier: 3 }, // no specterId, no history
+  { id: 'V-009', name: 'Iridium Components',    specterId: 'specter-distressed-1', paymentHistory: 'reliable', strategicTier: 2 },
+  { id: 'V-010', name: 'Jade Studios (NEW)',                                paymentHistory: 'new',      strategicTier: 3 },
   { id: 'V-011', name: 'Kindred Legal LLP',     specterId: 'specter-clean-9',  paymentHistory: 'reliable', strategicTier: 2 },
   { id: 'V-012', name: 'Larkspur Marketing',    specterId: 'specter-clean-10', paymentHistory: 'reliable', strategicTier: 3 },
 ];
@@ -79,25 +79,25 @@ const seeds: InvoiceSeed[] = [];
 
 seeds.push({
   id: 'INV-LARGE-NEW',
-  vendorId: 'V-010',                  // new vendor, no history
-  amount: 8_000,                      // > £5k auto-pay threshold
+  vendorId: 'V-010',
+  amount: 8_000,
   dueDay: 20,
   netDays: 30,
   category: 'professional',
 });
 seeds.push({
   id: 'INV-SPECTER-DISTRESSED',
-  vendorId: 'V-009',                  // Specter fixture returns 0.72
-  amount: 3_500,                      // < £5k, but distress > 0.3 fails the rule
+  vendorId: 'V-009',
+  amount: 3_500,
   dueDay: 20,
   netDays: 30,
   category: 'supplies',
 });
 seeds.push({
   id: 'INV-FLOOR-BREACH',
-  vendorId: 'V-001',                  // reliable, low distress, but pay-on-due breaches floor
+  vendorId: 'V-001',
   amount: 45_000,
-  dueDay: 7,                          // forces day-7 cash crunch
+  dueDay: 7,
   netDays: 30,
   category: 'logistics',
 });
