@@ -1,9 +1,5 @@
 'use client';
 
-// Top-level client component. Holds page state (schedule, decisions) and
-// dispatches API calls. Renders the Calendar, SavingsCounter, PolicyPanel,
-// EscalationPanel.
-
 import { useState } from 'react';
 import type { Invoice, Vendor, Forecast, Schedule } from '@/lib/types';
 import type { PolicyRule } from '@/lib/policy';
@@ -69,7 +65,6 @@ export function Dashboard({ invoices, vendors, forecast, autoPayRules, escalateR
     }
   }
 
-  // Demo flow step inferred from state: 1 Optimise -> 2 Investigate -> 3 Specter -> 4 Execute
   const currentStep = !schedule ? 1
     : decisions.length === 0 ? 2
     : executeResult ? 4

@@ -1,7 +1,3 @@
-// Sub-agent: discount NPV. Compares discount APR vs cost of capital, factors
-// in vendor reliability + distress, and recommends a payment timing. Pure TS;
-// no LLM call (math doesn't need one).
-
 import type { SubAgent, AgentInput, AgentRunResult } from '../lib/cursor';
 import type { Verdict } from '../lib/types';
 import { discountAPR, COST_OF_CAPITAL, shouldTakeDiscount } from '../lib/npv';
@@ -11,7 +7,6 @@ export const discountNpvAgent: SubAgent = {
   name: 'discount-npv',
   async run(input: AgentInput): Promise<AgentRunResult> {
     const startedAt = Date.now();
-    // Pure compute is fastest; resolves first in the UI.
     await new Promise((r) => setTimeout(r, 140));
 
     const { invoice, distressScore, vendor } = input;

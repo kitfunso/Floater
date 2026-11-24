@@ -1,8 +1,4 @@
-// Discount APR vs cost-of-capital math.
-// "2/10 net 30" = 2% discount if paid in 10 days, otherwise full amount due in 30.
-// Implicit APR = (discount / (1 - discount)) * (365 / (netDays - discountDays))
-
-export const COST_OF_CAPITAL = 0.08; // single source of truth for the demo
+export const COST_OF_CAPITAL = 0.08;
 
 export function discountAPR(
   discountPct: number,

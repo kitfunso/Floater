@@ -13,7 +13,6 @@ function gbp(n: number): string {
   return `£${n.toLocaleString('en-GB', { maximumFractionDigits: 0 })}`;
 }
 
-// Tween a number from 0 → target over `duration` ms with eased steps.
 function useCountUp(target: number, duration = 1200): number {
   const [v, setV] = useState(0);
   useEffect(() => {
@@ -22,7 +21,7 @@ function useCountUp(target: number, duration = 1200): number {
     const start = performance.now();
     const tick = (now: number) => {
       const t = Math.min(1, (now - start) / duration);
-      const eased = 1 - Math.pow(1 - t, 3); // ease-out cubic
+      const eased = 1 - Math.pow(1 - t, 3);
       setV(Math.round(target * eased));
       if (t < 1) raf = requestAnimationFrame(tick);
     };

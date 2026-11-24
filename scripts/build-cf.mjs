@@ -1,14 +1,6 @@
-// Cloudflare deploy wrapper.
-//
 // @cursor/sdk has dynamic webpack requires + .d.ts files in dist/ that crash
 // both esbuild (OpenNext) AND wrangler's deploy bundler. The SDK is only
 // used in the live (non-DEMO_REPLAY) path, which we never run on Cloudflare.
-// We rename the package directory before the run, then restore it after.
-//
-// Usage:
-//   node scripts/build-cf.mjs build    -> opennextjs-cloudflare build
-//   node scripts/build-cf.mjs preview  -> opennextjs-cloudflare build && wrangler dev
-//   node scripts/build-cf.mjs deploy   -> opennextjs-cloudflare build && wrangler deploy
 
 import { existsSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';

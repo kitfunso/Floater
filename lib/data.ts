@@ -1,7 +1,3 @@
-// Static JSON imports. Next.js with resolveJsonModule:true bundles these at
-// build time, so the same module works on Node (Vercel) and Cloudflare
-// Workers without filesystem access at runtime.
-
 import invoicesJson from '@/data/invoices.json';
 import vendorsJson from '@/data/vendors.json';
 import forecastJson from '@/data/cash-forecast.json';

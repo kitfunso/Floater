@@ -1,6 +1,3 @@
-// Fixture-cached narration. Bundled via static JSON import so it works on
-// Cloudflare Workers as well as Node.
-
 import narrationsJson from '@/data/fixtures/narrations.json';
 import type { Verdict } from './types';
 

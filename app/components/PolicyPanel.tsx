@@ -1,8 +1,5 @@
 'use client';
 
-// Renders AUTO_PAY_RULES + ESCALATE_RULES from lib/policy. NEVER duplicate
-// rule literals; this panel is the on-screen image of what runs in code.
-
 import type { PolicyRule } from '@/lib/policy';
 
 type Props = {

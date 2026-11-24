@@ -1,9 +1,3 @@
-// Sub-agent: cash impact. Uses lib/optimiser.simulate to test "what if we
-// pay this invoice on its current schedule date?" and reports breach status
-// + minimum buffer across the horizon. Pure compute under both DEMO_REPLAY
-// and live paths (no LLM call needed — the simulator already produces a
-// crisp answer).
-
 import type { SubAgent, AgentInput, AgentRunResult } from '../lib/cursor';
 import type { Verdict, ScheduleEntry, Invoice } from '../lib/types';
 import { simulate } from '../lib/optimiser';
@@ -12,13 +6,10 @@ export const cashImpactAgent: SubAgent = {
   name: 'cash-impact',
   async run(input: AgentInput): Promise<AgentRunResult> {
     const startedAt = Date.now();
-    // Modest latency so the running -> done transition is visible in the UI.
-    // Cash-impact is the middle pole.
     await new Promise((r) => setTimeout(r, 240));
 
     const { invoice, forecast } = input;
 
-    // Probe pay-on-due as the candidate.
     const probe: ScheduleEntry = {
       invoiceId: invoice.id,
       payDate: invoice.dueDate,

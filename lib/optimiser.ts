@@ -1,15 +1,3 @@
-// Greedy AP scheduler with cash-floor invariant + Specter-aware defers.
-//
-// Two exports:
-//   simulate(entries, forecast, invoiceById)   — pure: walks ISO-date events,
-//     returns { breachDay, minBuffer }. Used by the optimiser itself AND by
-//     agents/cash-impact.ts (extracted helper, codex's structural ask).
-//   optimise(input)                             — produces a Schedule. Greedy
-//     in dueDate order. Per invoice: distress-defer / discount / on-due / stretch.
-//
-// Invariant: when forceNaive is false, every Schedule returned has
-//            simulate(entries).breachDay === null. Tested in policy.test.ts.
-
 import type {
   Invoice,
   Forecast,
@@ -26,13 +14,9 @@ import {
 } from './policy';
 import { COST_OF_CAPITAL, discountAPR, shouldTakeDiscount } from './npv';
 
-// ============================================================
-// simulate
-// ============================================================
-
 export type SimResult = {
-  breachDay: string | null;   // first ISO date where cumulative cash drops below floor
-  minBuffer: number;          // minimum (cash - floor) across the horizon
+  breachDay: string | null;
+  minBuffer: number;
 };
 
 export function simulate(
@@ -73,10 +57,6 @@ export function simulate(
   return { breachDay, minBuffer };
 }
 
-// ============================================================
-// optimise
-// ============================================================
-
 function addDays(iso: string, n: number): string {
   const d = new Date(iso + 'T00:00:00Z');
   d.setUTCDate(d.getUTCDate() + n);
@@ -91,8 +71,6 @@ function pickStretchDate(
   invoiceById: ReadonlyMap<string, Invoice>,
   distressScore: number,
 ): { payDate: string; safe: boolean } {
-  // Walk dueDate + startStretch ... dueDate + MAX_STRETCH_DAYS. Return first
-  // non-breaching candidate. If none safe, return dueDate + MAX_STRETCH (best effort).
   for (let d = startStretch; d <= MAX_STRETCH_DAYS; d++) {
     const candidate = addDays(invoice.dueDate, d);
     const probe: ScheduleEntry = {
@@ -113,8 +91,6 @@ export function optimise(input: OptimiserInput): Schedule {
   const vendorById = new Map(vendors.map((v) => [v.id, v]));
   const invoiceById = new Map(invoices.map((i) => [i.id, i]));
 
-  // Deterministic order: by dueDate, then by id (so re-running with shuffled
-  // input still yields identical schedule).
   const sorted = [...invoices].sort((a, b) => {
     if (a.dueDate !== b.dueDate) return a.dueDate.localeCompare(b.dueDate);
     return a.id.localeCompare(b.id);
@@ -128,7 +104,6 @@ export function optimise(input: OptimiserInput): Schedule {
     if (!vendor) throw new Error(`Unknown vendor ${inv.vendorId} on invoice ${inv.id}`);
     const distress = distressScores[inv.vendorId] ?? 0;
 
-    // Probe pay-on-due breach (also feeds classify()).
     const probe: ScheduleEntry = {
       invoiceId: inv.id,
       payDate: inv.dueDate,
@@ -141,8 +116,6 @@ export function optimise(input: OptimiserInput): Schedule {
 
     const cls = classify({ invoice: inv, vendor, distressScore: distress, payOnDueWouldBreach });
 
-    // Naive baseline: every invoice pay-on-due, ignore breach. Used for
-    // breachesAvoidedVsBaseline diff.
     if (forceNaive) {
       entries.push(probe);
       if (cls.decision === 'flagged') {
@@ -151,7 +124,6 @@ export function optimise(input: OptimiserInput): Schedule {
       continue;
     }
 
-    // 1. Distress defer (rule: distress > 0.5)
     if (distress > DEFER_DISTRESS_THRESHOLD) {
       const stretched = pickStretchDate(inv, 7, entries, forecast, invoiceById, distress);
       entries.push({
@@ -165,7 +137,6 @@ export function optimise(input: OptimiserInput): Schedule {
       continue;
     }
 
-    // 2. Discount path (only if classify says auto AND distress safe)
     const apr =
       inv.discountPct && inv.discountDays
         ? discountAPR(inv.discountPct, inv.discountDays, inv.netDays)
@@ -190,7 +161,6 @@ export function optimise(input: OptimiserInput): Schedule {
       // Discount would breach — fall through to pay-on-due / stretch.
     }
 
-    // 3. Pay-on-due if safe (and classify auto)
     if (!payOnDueWouldBreach) {
       entries.push({
         invoiceId: inv.id,
@@ -205,7 +175,6 @@ export function optimise(input: OptimiserInput): Schedule {
       continue;
     }
 
-    // 4. Pay-on-due breaches → stretch up to MAX_STRETCH_DAYS.
     const stretched = pickStretchDate(inv, 1, entries, forecast, invoiceById, distress);
     entries.push({
       invoiceId: inv.id,
@@ -214,7 +183,6 @@ export function optimise(input: OptimiserInput): Schedule {
       projectedSaving: 0,
       distressScore: distress,
     });
-    // payOnDueWouldBreach was true → cls already returned 'flagged'.
     escalations.push({ invoiceId: inv.id, verdicts: [], reasonForEscalation: cls.reason });
   }
 

@@ -1,8 +1,3 @@
-// POST /api/agent/[name] — single sub-agent invocation. The client fires three
-// of these in parallel from the browser so the UI can show each verdict
-// landing independently (progressive reveal). Server still runs each agent
-// concurrently if the client uses Promise.all.
-
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { ALL_AGENTS } from '@/agents';
@@ -61,9 +56,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ name: stri
       verdict: result.verdict,
       durationMs: wall,
       effectiveDistress: distress,
-      // narration is per-invoice, not per-agent. Send it on the
-      // vendor-health response (first one rendered) so the UI shows it
-      // alongside the per-agent verdicts.
       narration:
         name === 'vendor-health'
           ? narrate({ invoiceId: invoice.id, verdicts: [result.verdict], alertTriggered })

@@ -1,8 +1,5 @@
 'use client';
 
-// 60-day payment schedule. Using a coloured table sorted by payDate (Gantt
-// fallback, per CLAUDE.md "spending >30 min on calendar visuals" guard).
-
 import type { Schedule, Invoice, Vendor, Forecast } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 

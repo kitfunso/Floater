@@ -1,12 +1,3 @@
-// Sub-agent: vendor health. Reads the pre-fetched Specter distress score and
-// translates it into a recommendation + rationale. Does NOT re-hit Specter
-// (the score was pre-fetched in /api/optimise so the same value flows through
-// the optimiser AND the agent fan-out).
-//
-// Under DEMO_REPLAY=1 (default in deploy): deterministic, no LLM call.
-// Under DEMO_REPLAY=0: would prompt gpt-5-mini for a one-line rationale via
-// the Cursor SDK. Wired but not the demo path.
-
 import { loadCursorSdk } from '../lib/cursor';
 import type { SubAgent, AgentInput, AgentRunResult } from '../lib/cursor';
 import type { Verdict } from '../lib/types';
@@ -35,9 +26,6 @@ function rationaleFor(distressScore: number): { recommendation: Verdict['recomme
 }
 
 async function runDemoReplay(input: AgentInput): Promise<Verdict> {
-  // Realistic LLM-like latency so the "running…" rows in the UI are visible
-  // for a beat each. vendor-health is the slowest because in the live path
-  // it'd hit gpt-5-mini for its rationale.
   await new Promise((r) => setTimeout(r, 380 + Math.floor(input.distressScore * 200)));
   const { recommendation, rationale } = rationaleFor(input.distressScore);
   return {
@@ -49,8 +37,6 @@ async function runDemoReplay(input: AgentInput): Promise<Verdict> {
 }
 
 async function runLive(input: AgentInput): Promise<Verdict> {
-  // Live path: Cursor SDK call. Kept small (single send/wait) for cost control.
-  // Falls back to the deterministic path on any error so the demo never blocks.
   try {
     const apiKey = process.env.CURSOR_API_KEY;
     if (!apiKey) return runDemoReplay(input);
@@ -68,7 +54,6 @@ async function runLive(input: AgentInput): Promise<Verdict> {
       const result = await run.wait();
       const text = (result && result.status === 'finished' ? result.text ?? '' : '') ?? '';
       const fallback = rationaleFor(input.distressScore);
-      // Cheap parse: if model output mentions "defer" use defer; else fallback.
       const lower = text.toLowerCase();
       const recommendation: Verdict['recommendation'] =
         lower.includes('defer') ? 'defer'

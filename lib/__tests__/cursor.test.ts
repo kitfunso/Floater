@@ -1,5 +1,3 @@
-// Test cursor.ts fan-out behaviour: parallel exec, cache, verdict shape.
-//   DEMO_REPLAY=1 npx tsx lib/__tests__/cursor.test.ts
 import { fanOut, _clearCacheForTest } from '../cursor';
 import { vendorHealthAgent } from '../../agents/vendor-health';
 import { ALL_AGENTS } from '../../agents';
@@ -24,7 +22,6 @@ function check(name: string, cond: boolean, detail?: string): void {
 async function main() {
   _clearCacheForTest();
 
-  // Step 7a checkpoint: 1 agent, fanOut still uses Promise.all (extends to N=3 in 7b).
   const t0 = Date.now();
   const r1 = await fanOut(
     { invoice: inv, vendor, forecast, distressScore: 0.1, scheduleId: 'SCH-T' },
@@ -38,7 +35,6 @@ async function main() {
   check('parallelism object present',   typeof r1.parallelism.spreadMs === 'number');
   check('first call took >0ms',         (t1 - t0) >= 20);
 
-  // Cache hit: second call instant
   const c0 = Date.now();
   const r2 = await fanOut(
     { invoice: inv, vendor, forecast, distressScore: 0.1, scheduleId: 'SCH-T' },
@@ -48,7 +44,6 @@ async function main() {
   check('cache hit < 50ms',             (c1 - c0) < 50);
   check('same verdicts on cache hit',   r2.verdicts[0]?.recommendation === r1.verdicts[0]?.recommendation);
 
-  // Different distress scores
   _clearCacheForTest();
   const distressed = await fanOut(
     { invoice: inv, vendor, forecast, distressScore: 0.7, scheduleId: 'SCH-D' },
@@ -62,7 +57,6 @@ async function main() {
   );
   check('moderate distress = pay-on-time', moderate.verdicts[0]?.recommendation === 'pay-on-time');
 
-  // Step 7b: full N=3 fan-out
   console.log('\n7b: 3-agent fan-out');
   _clearCacheForTest();
   const t3start = Date.now();
@@ -76,9 +70,6 @@ async function main() {
   const agents = r3.verdicts.map((v) => v.agent);
   check('agents = vendor-health, cash-impact, discount-npv',
     agents[0] === 'vendor-health' && agents[1] === 'cash-impact' && agents[2] === 'discount-npv');
-  // Parallel proof: total wallclock < sum of individual durations.
-  // Each agent has 25-80ms stagger; if sequential, total >= 90ms. Promise.all
-  // should land it under 120ms total.
   check(`total wallclock < 200ms (got ${t3total}ms)`, t3total < 200);
   check(`speedup > 1 (got ${r3.parallelism.speedup}×)`, r3.parallelism.speedup > 1);
   check(`sequentialMs >= durationMs`,
@@ -91,11 +82,9 @@ async function main() {
     return Date.now() - c0;
   })()) < 30);
 
-  // Discount-NPV recommendation for 2/10 net 30 reliable + low distress
   check('discount-npv says pay-early',
     r3.verdicts[2]?.recommendation === 'pay-early');
 
-  // Cash-impact safe forecast says pay-early
   check('cash-impact says pay-early on safe forecast',
     r3.verdicts[1]?.recommendation === 'pay-early');
 

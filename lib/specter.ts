@@ -1,7 +1,3 @@
-// Specter wrapper. Returns a normalised distress score 0-1 + rationale.
-// Under DEMO_REPLAY=1 (default in production deploys), serves fixtures so the
-// demo critical path never depends on a live API.
-
 import type { DistressSignal } from './types';
 
 const FIXTURES: Record<string, DistressSignal> = {

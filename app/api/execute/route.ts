@@ -1,7 +1,3 @@
-// POST /api/execute — stateless. Client sends the schedule it holds plus
-// the decisions it has tracked locally; server returns the executed summary.
-// No persistence (works on Cloudflare Workers without KV).
-
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 

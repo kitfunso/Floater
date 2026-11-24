@@ -1,9 +1,5 @@
 'use client';
 
-// Always-visible setup row. Shows the input dataset (bills, cash position,
-// floor, horizon) so judges have the demo's setup line on screen before
-// anyone clicks Optimise.
-
 import type { Invoice, Forecast } from '@/lib/types';
 
 type Props = {
@@ -72,9 +68,6 @@ function buildTrajectory(forecast: Forecast): Point[] {
   const maxDay = Math.max(...byDay.keys());
   const pts: Point[] = [];
   let cash = forecast.openingCash;
-  // Start at openingCash BEFORE any day-0 flows so the chart matches
-  // the setup band's "Opening cash £80k". Day-0 rent drop is visible
-  // as the first step down on the line.
   pts.push({ day: 0, cash });
   for (let d = 0; d <= maxDay; d++) {
     const delta = byDay.get(d) ?? 0;
@@ -90,7 +83,7 @@ function CashChart({ trajectory, floor }: { trajectory: Point[]; floor: number }
   if (trajectory.length < 2) return null;
 
   const W = 640, H = 200;
-  const ML = 52, MR = 16, MT = 20, MB = 32; // margins
+  const ML = 52, MR = 16, MT = 20, MB = 32;
   const plotW = W - ML - MR;
   const plotH = H - MT - MB;
 
@@ -105,9 +98,7 @@ function CashChart({ trajectory, floor }: { trajectory: Point[]; floor: number }
   const x = (d: number) => ML + (d / maxDay) * plotW;
   const y = (c: number) => MT + (1 - (c - minC) / (maxC - minC)) * plotH;
 
-  // Y-axis tick values (4-5 nice ticks)
   const yTicks = niceTicksK(minC, maxC, 5);
-  // X-axis ticks every 7 days
   const xTicks: number[] = [];
   for (let d = 0; d <= maxDay; d += 7) xTicks.push(d);
 
@@ -121,9 +112,6 @@ function CashChart({ trajectory, floor }: { trajectory: Point[]; floor: number }
 
   const floorY = y(floor);
 
-  // Key moments: payroll dips (local minima)
-  // Only annotate payroll dips well past the opening (skip day <= 7 to avoid
-  // cluttering the opening dot area). Skip the peak too — y-axis labels cover it.
   const annotations: { day: number; cash: number; label: string }[] = [];
   for (let i = 1; i < trajectory.length - 1; i++) {
     const prev = trajectory[i - 1]!.cash;
@@ -149,7 +137,6 @@ function CashChart({ trajectory, floor }: { trajectory: Point[]; floor: number }
           </linearGradient>
         </defs>
 
-        {/* Grid lines */}
         {yTicks.map((v) => (
           <g key={`yt-${v}`}>
             <line x1={ML} y1={y(v)} x2={ML + plotW} y2={y(v)} stroke="currentColor" strokeOpacity="0.07" strokeWidth="1" />
@@ -167,20 +154,16 @@ function CashChart({ trajectory, floor }: { trajectory: Point[]; floor: number }
           </g>
         ))}
 
-        {/* Floor danger zone */}
         <rect x={ML} y={floorY} width={plotW} height={MT + plotH - floorY} fill="url(#floorAreaGrad)" />
 
-        {/* Cash area + line */}
         <path d={areaPath} fill="url(#cashAreaGrad)" />
         <path d={line} fill="none" stroke="oklch(0.72 0.15 220)" strokeWidth="2" strokeLinejoin="round" />
 
-        {/* Floor line */}
         <line x1={ML} y1={floorY} x2={ML + plotW} y2={floorY} stroke="oklch(0.63 0.2 25)" strokeWidth="1.5" strokeDasharray="6 4" />
         <text x={ML + plotW + 4} y={floorY + 4} fill="oklch(0.63 0.2 25)" fontSize="10" fontWeight="600" fontFamily="ui-monospace, monospace">
           FLOOR
         </text>
 
-        {/* Annotation dots + labels */}
         {annotations.map((a, i) => (
           <g key={`ann-${i}`}>
             <circle cx={x(a.day)} cy={y(a.cash)} r="3" fill="oklch(0.72 0.15 220)" stroke="white" strokeWidth="1.5" />
@@ -198,13 +181,11 @@ function CashChart({ trajectory, floor }: { trajectory: Point[]; floor: number }
           </g>
         ))}
 
-        {/* Opening marker */}
         <circle cx={x(0)} cy={y(trajectory[0]!.cash)} r="3.5" fill="oklch(0.72 0.15 220)" stroke="white" strokeWidth="2" />
         <text x={x(0) + 8} y={y(trajectory[0]!.cash) - 8} fill="oklch(0.72 0.15 220)" fontSize="10" fontWeight="600" fontFamily="ui-monospace, monospace">
           £{(trajectory[0]!.cash / 1000).toFixed(0)}k open
         </text>
 
-        {/* Axis lines */}
         <line x1={ML} y1={MT} x2={ML} y2={MT + plotH} stroke="currentColor" strokeOpacity="0.15" strokeWidth="1" />
         <line x1={ML} y1={MT + plotH} x2={ML + plotW} y2={MT + plotH} stroke="currentColor" strokeOpacity="0.15" strokeWidth="1" />
       </svg>

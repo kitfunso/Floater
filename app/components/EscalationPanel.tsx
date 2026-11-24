@@ -95,8 +95,6 @@ export function EscalationPanel({ schedule, invoices, vendors, onDecisionRecorde
       },
     }));
 
-    // Fire all three agents in parallel from the browser. Each fetch resolves
-    // independently so React re-renders as each verdict lands.
     const body: Record<string, unknown> = {
       scheduleId: schedule.scheduleId,
       invoiceId,
@@ -139,10 +137,6 @@ export function EscalationPanel({ schedule, invoices, vendors, onDecisionRecorde
 
   async function triggerSpecterAlert() {
     if (!schedule) return;
-    // Fan out across every flagged invoice. Each card re-investigates with
-    // elevated distress 0.7 in parallel — three vendor-health agents flip
-    // to "defer" within the same second. Demo beat: one button, three red
-    // borders, judges see Specter as a structural input across the panel.
     await Promise.all(
       schedule.escalations.map((e) => investigate(e.invoiceId, 0.7)),
     );

@@ -1,15 +1,3 @@
-// Deterministic seed for Floater. Produces:
-//   data/vendors.json    — 12 vendors (10 reliable, V-009 distressed in Specter, V-010 NEW)
-//   data/invoices.json   — 40 invoices, hand-tuned so the optimiser yields exactly
-//                          [INV-LARGE-NEW, INV-SPECTER-DISTRESSED, INV-FLOOR-BREACH]
-//                          as the escalation set under DEMO_REPLAY=1.
-//   data/cash-forecast.json — 60-day forecast: opening £80k, floor £40k,
-//                          rent day 0, AR every Friday £30k, payroll days 28 + 56.
-//
-// Run: npx tsx scripts/seed.ts
-//
-// No RNG. Re-running produces byte-identical output.
-
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Invoice, Vendor, Forecast, CashFlow } from '../lib/types';
@@ -17,7 +5,6 @@ import type { Invoice, Vendor, Forecast, CashFlow } from '../lib/types';
 const ROOT = join(__dirname, '..');
 const DATA = join(ROOT, 'data');
 
-// Forecast opens 2026-05-04 (Monday). Day 0 = 2026-05-04. Day 59 = 2026-07-02.
 const OPENING_DATE = new Date('2026-05-04T00:00:00Z');
 
 function dayToISO(day: number): string {
@@ -25,10 +12,6 @@ function dayToISO(day: number): string {
   d.setUTCDate(d.getUTCDate() + day);
   return d.toISOString().slice(0, 10);
 }
-
-// ============================================================
-// Vendors
-// ============================================================
 
 const vendors: Vendor[] = [
   { id: 'V-001', name: 'Acme Office Supplies',  specterId: 'specter-clean-1',  paymentHistory: 'reliable', strategicTier: 3 },
@@ -45,24 +28,9 @@ const vendors: Vendor[] = [
   { id: 'V-012', name: 'Larkspur Marketing',    specterId: 'specter-clean-10', paymentHistory: 'reliable', strategicTier: 3 },
 ];
 
-// ============================================================
-// Forecast
-// ============================================================
-//
-// AR £40k each (8×£40k = £320k) leaves enough headroom that DISC pay-earlies
-// clustered in days 2-15 don't push the schedule under the floor on the same
-// day INV-FB stretches to. Math:
-//   cash7 (no INV-FB) ≈ 80 - 8 - 31.5 (INV-EARLY) + 40 (AR day 4) = £80.5k
-//   pay INV-FB £45k → £35.5k → below £40k floor → BREACH triggers
-//   stretch INV-FB to day 11: 80.5 + 40 (AR 11) - 45 = £75.5k buffer for the
-//   ~£32k of DISC pay-earlies that land days 2-15 → still above floor.
-
 const forecast: Forecast = (() => {
   const flows: CashFlow[] = [];
   flows.push({ date: dayToISO(0), inflow: 0, outflow: 8_000, label: 'Office rent' });
-  // Day-4 AR is intentionally smaller to keep day-7 cash tight enough that
-  // INV-FB at £45k pay-on-due breaches the floor. Subsequent ARs are larger
-  // so DISC pay-earlies clustered days 8-30 don't cascade into breaches.
   flows.push({ date: dayToISO(4),  inflow: 30_000, outflow: 0, label: 'AR receipt' });
   for (const day of [11, 18, 25, 32, 39, 46, 53]) {
     flows.push({ date: dayToISO(day), inflow: 45_000, outflow: 0, label: 'AR receipt' });
@@ -75,10 +43,6 @@ const forecast: Forecast = (() => {
     flows,
   };
 })();
-
-// ============================================================
-// Invoices
-// ============================================================
 
 type InvoiceSeed = {
   id: string;
@@ -113,7 +77,6 @@ function buildInvoice(s: InvoiceSeed): Invoice {
 
 const seeds: InvoiceSeed[] = [];
 
-// ----- 3 escalation invoices -----
 seeds.push({
   id: 'INV-LARGE-NEW',
   vendorId: 'V-010',                  // new vendor, no history
@@ -139,9 +102,7 @@ seeds.push({
   category: 'logistics',
 });
 
-// ----- 7 plain net 30 invoices, dueDays 1..6 (forces day-7 floor pressure) -----
 const earlySeeds: Array<[string, number, number]> = [
-  // [vendorId, dueDay, amount]
   ['V-002', 1, 4500],
   ['V-003', 2, 4400],
   ['V-004', 3, 4600],
@@ -161,12 +122,8 @@ earlySeeds.forEach(([vendorId, dueDay, amount], i) => {
   });
 });
 
-// ----- 18 invoices with 5/10 net 30 (the auto-discount workhorses) -----
-// dueDays bounded [22, 50] so pay-early dates (issuedDay+10) are >= day 2 and
-// <= day 30 — funded by AR receipts before the post-day-53 dry period.
 const fiveTenVendors = ['V-001','V-002','V-003','V-004','V-006','V-007','V-008','V-011','V-012'];
 const fiveTenSchedule: Array<[number, number]> = [
-  // [dueDay, amount]   — every amount under £5k auto-pay threshold
   [22, 4300], [24, 4400], [26, 4200], [28, 4500],
   [30, 4300], [32, 4100], [34, 4400], [36, 4300],
   [38, 4500], [40, 4200], [41, 4300], [43, 4400],
@@ -186,7 +143,6 @@ fiveTenSchedule.forEach(([dueDay, amount], i) => {
   });
 });
 
-// ----- 9 invoices with 2/10 net 30 -----
 const twoTenVendors = ['V-007','V-008','V-011','V-012','V-002','V-003','V-001','V-004','V-006'];
 const twoTenSchedule: Array<[number, number]> = [
   [21, 1500], [25, 1700], [29, 1400], [31, 1600], [37, 1800],
@@ -205,7 +161,6 @@ twoTenSchedule.forEach(([dueDay, amount], i) => {
   });
 });
 
-// ----- 3 plain net 30 mid-window invoices -----
 const plainMidSeeds: Array<[string, number, number]> = [
   ['V-005', 23, 1100],
   ['V-005', 35, 900],
@@ -224,10 +179,6 @@ plainMidSeeds.forEach(([vendorId, dueDay, amount], i) => {
 
 const invoices: Invoice[] = seeds.map(buildInvoice);
 
-// ============================================================
-// Sanity assertions before writing
-// ============================================================
-
 if (invoices.length !== 40) {
   throw new Error(`Expected 40 invoices, got ${invoices.length}`);
 }
@@ -240,10 +191,6 @@ const discountTotal = invoices
   .filter((inv) => inv.discountPct && inv.discountDays)
   .reduce((sum, inv) => sum + inv.amount * (inv.discountPct ?? 0), 0);
 console.log(`Max possible discount saving (if every discount captured): £${discountTotal.toFixed(2)}`);
-
-// ============================================================
-// Write
-// ============================================================
 
 mkdirSync(DATA, { recursive: true });
 writeFileSync(join(DATA, 'vendors.json'),       JSON.stringify(vendors,  null, 2) + '\n');

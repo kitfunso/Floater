@@ -1,12 +1,7 @@
-// HITL escalation policy. Single source of truth for both the optimiser and the
-// PolicyPanel UI component. AUTO_PAY_RULES + ESCALATE_RULES are exported as
-// typed const arrays so the panel renders directly from this module — no
-// duplicated rule strings in JSX.
-
 import type { Invoice, Vendor } from './types';
 
 export const MAX_STRETCH_DAYS = 14;
-export const AUTO_PAY_AMOUNT_THRESHOLD = 5_000;     // GBP
+export const AUTO_PAY_AMOUNT_THRESHOLD = 5_000;
 export const AUTO_PAY_DISTRESS_THRESHOLD = 0.3;
 export const DEFER_DISTRESS_THRESHOLD = 0.5;
 
@@ -72,29 +67,17 @@ export const ESCALATE_RULES: readonly PolicyRule[] = [
   },
 ];
 
-// ============================================================
-// classify
-// ============================================================
-//
-// Called by the optimiser once per invoice. Returns 'auto' or 'flagged' plus
-// the list of rule ids that failed (so the UI can show "why").
-//
-// Important: sub-agents do NOT participate in classify(). They only run when
-// the invoice has already been flagged, via /api/investigate. This keeps the
-// auto-pay path cheap (no LLM calls per line item) and the escalation path
-// expensive but rare.
-
 export type ClassifyInput = {
   invoice: Invoice;
   vendor: Vendor;
-  distressScore: number;       // 0-1, pre-fetched from Specter
-  payOnDueWouldBreach: boolean; // simulated by the optimiser before calling classify
+  distressScore: number;
+  payOnDueWouldBreach: boolean;
 };
 
 export type ClassifyResult = {
   decision: 'auto' | 'flagged';
-  failedRuleIds: string[];     // empty when decision === 'auto'
-  reason: string;              // human-readable summary
+  failedRuleIds: string[];
+  reason: string;
 };
 
 export function classify({

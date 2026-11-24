@@ -1,4 +1,3 @@
-// Inline test for npv + policy. Run: npx tsx lib/__tests__/policy.test.ts
 import { discountAPR, shouldTakeDiscount, COST_OF_CAPITAL } from '../npv';
 import { AUTO_PAY_RULES, ESCALATE_RULES, classify, MAX_STRETCH_DAYS } from '../policy';
 import type { Invoice, Vendor } from '../types';
@@ -15,7 +14,6 @@ function check(name: string, cond: boolean, detail?: string): void {
   }
 }
 
-// --- npv ---
 console.log('npv');
 const apr210 = discountAPR(0.02, 10, 30);
 check('discountAPR(2/10 net 30) ≈ 0.372', Math.abs(apr210 - 0.3724) < 0.001, `got ${apr210}`);
@@ -25,13 +23,11 @@ check('shouldTakeDiscount(0.37) true',  shouldTakeDiscount(apr210));
 check('shouldTakeDiscount(0.05) false', !shouldTakeDiscount(0.05));
 check('COST_OF_CAPITAL is 0.08', COST_OF_CAPITAL === 0.08);
 
-// --- policy rule data ---
 console.log('policy rules');
 check('AUTO_PAY_RULES has 5 rows',  AUTO_PAY_RULES.length === 5);
 check('ESCALATE_RULES has 5 rows',  ESCALATE_RULES.length === 5);
 check('MAX_STRETCH_DAYS === 14',    MAX_STRETCH_DAYS === 14);
 
-// --- classify ---
 console.log('classify');
 const reliableVendor: Vendor = {
   id: 'V-001', name: 'Test', paymentHistory: 'reliable', strategicTier: 2, specterId: 'specter-clean-1',

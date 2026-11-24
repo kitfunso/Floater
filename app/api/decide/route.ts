@@ -1,8 +1,3 @@
-// POST /api/decide — stateless on Cloudflare. Just validates the body and
-// returns ok. The client tracks decisions locally and replays them to
-// /api/execute. (Worker instances don't share memory; persistence would
-// need KV / Durable Objects, which is overkill for the demo.)
-
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 

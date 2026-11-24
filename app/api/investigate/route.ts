@@ -1,6 +1,3 @@
-// POST /api/investigate { scheduleId, invoiceId, forceDistress? }
-//   -> { verdicts, parallelism, narration }
-
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { fanOut, _clearCacheForTest } from '@/lib/cursor';
@@ -14,9 +11,6 @@ export const dynamic = 'force-dynamic';
 const Body = z.object({
   scheduleId: z.string().min(1),
   invoiceId: z.string().min(1),
-  // Stateless: client passes the entry's distressScore from the schedule it
-  // already holds. Lets /api/investigate work on Cloudflare Workers where
-  // Workers don't share in-memory state across requests.
   distressScore: z.number().min(0).max(1),
   forceDistress: z.number().min(0).max(1).optional(),
 });
@@ -40,9 +34,6 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Alert-triggered re-investigation needs to bypass the per-(scheduleId,
-    // invoiceId) cache. Use a synthetic scheduleId postfix so the cached
-    // entry stays around for normal investigate calls.
     const alertTriggered = typeof parsed.forceDistress === 'number';
     const distressForRun = alertTriggered ? parsed.forceDistress! : parsed.distressScore;
     const cacheScheduleId = alertTriggered
@@ -71,5 +62,4 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// Avoid unused-import warning when test hooks aren't called from runtime path.
 void _clearCacheForTest;
